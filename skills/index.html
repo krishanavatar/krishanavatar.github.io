@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Skills Map — Krishanavatar Gurjar</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; }
+
+:root {
+  --bg:      #0c0c0c;
+  --surface: #141414;
+  --border:  #2a2a2a;
+  --text:    #f0f0f0;
+  --muted:   #aaaaaa;
+  --dim:     #555555;
+
+  --c-ai:      #62b8ff;
+  --c-idp:     #52dc82;
+  --c-backend: #ffaa55;
+  --c-lead:    #cc9fff;
+  --c-root:    #7ad4ff;
+
+  --legend-bg:   rgba(12,12,12,0.95);
+  --depth-pip-bg: rgba(14,14,14,0.7);
+
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --mono: ui-monospace, "Cascadia Code", "Fira Code", "Courier New", monospace;
+}
+
+body.light {
+  --bg:      #F4F4F6;
+  --surface: #FFFFFF;
+  --border:  #D8D8DE;
+  --text:    #1A1A1F;
+  --muted:   #5A5A68;
+  --dim:     #A0A0B0;
+
+  --c-ai:      #1A62C0;
+  --c-idp:     #1A7A3A;
+  --c-backend: #B85000;
+  --c-lead:    #6030B0;
+  --c-root:    #1A62C0;
+
+  --legend-bg:   rgba(255,255,255,0.97);
+  --depth-pip-bg: rgba(255,255,255,0.85);
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  display: flex;
+  flex-direction: column;
+}
+
+/* scanlines */
+body:not(.light)::before {
+  content: '';
+  position: fixed; inset: 0;
+  background: repeating-linear-gradient(0deg, transparent, transparent 2px,
+    rgba(0,0,0,0.06) 2px, rgba(0,0,0,0.06) 4px);
+  pointer-events: none; z-index: 1000;
+}
+
+/* ── header ── */
+.header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 20px; height: 52px;
+  background: rgba(14,14,14,0.92);
+  border-bottom: 1px solid var(--border);
+  backdrop-filter: blur(12px);
+  flex-shrink: 0; z-index: 50; gap: 16px;
+}
+body.light .header { background: rgba(244,244,246,0.96); }
+
+.back-link {
+  font-family: var(--mono); font-size: 11px; color: var(--muted);
+  text-decoration: none; letter-spacing: 0.05em; white-space: nowrap;
+  transition: color 0.15s; flex-shrink: 0;
+}
+.back-link:hover { color: var(--c-root); }
+
+.header-center { text-align: center; flex: 1; min-width: 0; }
+.header-title {
+  font-size: 14px; font-weight: 500; color: var(--text);
+  letter-spacing: 0.02em; display: block;
+}
+.header-sub {
+  font-family: var(--mono); font-size: 9px; color: var(--dim);
+  letter-spacing: 0.1em; text-transform: uppercase;
+}
+
+.controls { display: flex; gap: 6px; flex-shrink: 0; }
+.ctrl-btn {
+  font-family: var(--sans); font-size: 11px; font-weight: 500;
+  padding: 4px 12px; border: 1px solid var(--border); border-radius: 4px;
+  background: transparent; color: var(--muted); cursor: pointer;
+  transition: all 0.15s; white-space: nowrap;
+}
+.ctrl-btn:hover { border-color: var(--c-root); color: var(--c-root); }
+.ctrl-btn.danger:hover { border-color: #ff5555; color: #ff5555; }
+
+/* ── map ── */
+#map-container { flex: 1; overflow: hidden; position: relative; }
+#mindmap {
+  width: 100%; height: 100%; display: block;
+  cursor: grab; user-select: none;
+}
+#mindmap:active { cursor: grabbing; }
+
+/* ── node transitions ── */
+.node-g {
+  transition: transform 0.32s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+              opacity 0.32s ease;
+}
+.node-circle { transition: fill 0.2s, r 0.2s; }
+.link-path { transition: stroke-opacity 0.32s, d 0.32s; fill: none; }
+
+/* ── HUD ── */
+.zoom-badge {
+  position: absolute; bottom: 10px; right: 16px;
+  font-family: var(--mono); font-size: 10px; color: var(--dim);
+  pointer-events: none;
+}
+.hint-badge {
+  position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%);
+  font-family: var(--mono); font-size: 10px; color: var(--dim);
+  pointer-events: none; transition: opacity 0.4s; white-space: nowrap;
+}
+.depth-badge { position: absolute; top: 10px; right: 16px; display: flex; gap: 6px; }
+.depth-pip {
+  font-family: var(--mono); font-size: 10px; padding: 3px 8px;
+  border: 1px solid var(--border); border-radius: 3px; color: var(--dim);
+  background: var(--depth-pip-bg); cursor: pointer; transition: all 0.15s;
+}
+.depth-pip:hover { border-color: var(--c-root); color: var(--c-root); }
+.depth-pip.active {
+  border-color: var(--c-root); color: var(--c-root);
+  background: rgba(96,197,255,0.08);
+}
+
+/* ── legend ── */
+.legend {
+  display: flex; align-items: center; justify-content: center;
+  gap: 28px; height: 36px;
+  background: var(--legend-bg); border-top: 1px solid var(--border);
+  flex-shrink: 0; font-size: 11px; padding: 0 20px; flex-wrap: wrap;
+}
+.legend-item { display: flex; align-items: center; gap: 6px; color: var(--muted); white-space: nowrap; }
+.legend-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.d-ai      { background: var(--c-ai); }
+.d-idp     { background: var(--c-idp); }
+.d-backend { background: var(--c-backend); }
+.d-lead    { background: var(--c-lead); }
+</style>
+</head>
+<body>
+
+<header class="header">
+  <a class="back-link" href="/">&#8592; krishanavatar.github.io</a>
+  <div class="header-center">
+    <span class="header-title">AI Engineer &amp; Python Developer Profile</span>
+    <span class="header-sub">Interactive Skills Map &middot; Click nodes to expand &middot; Scroll to zoom</span>
+  </div>
+  <div class="controls">
+    <button class="ctrl-btn" id="btn-expand">Expand All</button>
+    <button class="ctrl-btn danger" id="btn-collapse">Collapse All</button>
+    <button class="ctrl-btn" id="btn-reset">Reset View</button>
+    <button class="ctrl-btn" id="btn-theme" style="padding:4px 9px;font-size:13px;">&#9728;&#xFE0E;</button>
+  </div>
+</header>
+
+<div id="map-container">
+  <svg id="mindmap">
+    <defs>
+      <filter id="glow">
+        <feGaussianBlur stdDeviation="3" result="blur"/>
+        <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+    </defs>
+    <g id="zoom-layer">
+      <g id="links-layer"></g>
+      <g id="nodes-layer"></g>
+    </g>
+  </svg>
+  <div class="depth-badge">
+    <span class="depth-pip active" data-depth="1">L1</span>
+    <span class="depth-pip" data-depth="2">L2</span>
+    <span class="depth-pip" data-depth="3">L3</span>
+  </div>
+  <div class="zoom-badge" id="zoom-badge">100%</div>
+  <div class="hint-badge" id="hint">Scroll to zoom &middot; Drag to pan</div>
+</div>
+
+<footer class="legend">
+  <span class="legend-item"><span class="legend-dot d-ai"></span>AI &amp; LLM Engineering</span>
+  <span class="legend-item"><span class="legend-dot d-idp"></span>Document Intelligence</span>
+  <span class="legend-item"><span class="legend-dot d-backend"></span>Backend &amp; Cloud</span>
+  <span class="legend-item"><span class="legend-dot d-lead"></span>Leadership &amp; Delivery</span>
+</footer>
+
+<script>
+/* ── Tree Data ─────────────────────────────────────────────── */
+const TREE_DATA = {
+  name: "Krishanavatar Gurjar",
+  cid: "root",
+  children: [
+    {
+      name: "AI & LLM Engineering", cid: "ai",
+      children: [
+        { name: "Foundational Models", children: [
+          {name:"OpenAI GPT-4o"}, {name:"Claude 4 (Anthropic)"}, {name:"Gemini 2.5 Flash"},
+          {name:"Gemini 2.5 Pro"}, {name:"Vertex AI"}
+        ]},
+        { name: "LLM Engineering", children: [
+          {name:"Cost Optimization"}, {name:"64% Cost Reduction"}, {name:"Prompt Caching"},
+          {name:"Token Budgeting"}, {name:"Tier Routing"}, {name:"Cache Hit Tracking"}
+        ]},
+        { name: "Agentic AI", children: [
+          {name:"Agentic Workflows"}, {name:"Multi-Agent Systems"}, {name:"Tool Use"},
+          {name:"ReAct Pattern"}, {name:"Autonomous Pipelines"}
+        ]},
+        { name: "RAG & Vector DB", children: [
+          {name:"RAG Pipelines"}, {name:"Vector Search"}, {name:"Embeddings"},
+          {name:"ChromaDB"}, {name:"FAISS"}, {name:"Context Management"}
+        ]},
+        { name: "Orchestration", children: [
+          {name:"Multi-LLM Routing"}, {name:"Config-Driven Switching"},
+          {name:"Provider Fallback"}, {name:"Prompt Engineering"}, {name:"Schema Extraction"}
+        ]}
+      ]
+    },
+    {
+      name: "Document Intelligence", cid: "idp",
+      children: [
+        { name: "IDP Architecture", children: [
+          {name:"End-to-End Pipelines"}, {name:"No-Touch Processing"},
+          {name:"100% NTP Confidence"}, {name:"Document Classification"}, {name:"Auto-Approval"}
+        ]},
+        { name: "OCR & Extraction", children: [
+          {name:"OCR Pipelines"}, {name:"NER / spaCy"}, {name:"Field Extraction"},
+          {name:"Confidence Scoring"}, {name:"Layout Analysis"}
+        ]},
+        { name: "ML Models", children: [
+          {name:"YOLO / Darknet"}, {name:"TensorFlow"}, {name:"PyTorch"},
+          {name:"scikit-learn"}, {name:"Custom Training"}
+        ]}
+      ]
+    },
+    {
+      name: "Backend & Cloud", cid: "backend",
+      children: [
+        { name: "Languages", children: [
+          {name:"Python (8+ yrs)"}, {name:"Java"}, {name:"Spring Boot"}
+        ]},
+        { name: "Frameworks & APIs", children: [
+          {name:"Flask"}, {name:"REST APIs"}, {name:"Microservices"},
+          {name:"Event-Driven"}, {name:"RabbitMQ"}
+        ]},
+        { name: "Databases", children: [
+          {name:"MongoDB"}, {name:"MySQL"}, {name:"Elasticsearch"}, {name:"Redis"}
+        ]},
+        { name: "Cloud & Infra", children: [
+          {name:"AWS Lambda"}, {name:"AWS EC2"}, {name:"S3"},
+          {name:"Docker"}, {name:"Kubernetes"}, {name:"Jenkins CI/CD"}
+        ]}
+      ]
+    },
+    {
+      name: "Leadership & Delivery", cid: "lead",
+      children: [
+        { name: "Technical Strategy", children: [
+          {name:"HLD / LLD"}, {name:"Architecture Reviews"},
+          {name:"Tech Roadmap"}, {name:"Cost Governance"}
+        ]},
+        { name: "Forward Deployed", children: [
+          {name:"On-site USA"}, {name:"2 Months Early"}, {name:"Client Ownership"},
+          {name:"Early Revenue Enabled"}
+        ]},
+        { name: "Observability", children: [
+          {name:"Grafana"}, {name:"Kibana / ELK"},
+          {name:"LLM Cost Tracking"}, {name:"Token Usage Dashboards"}
+        ]},
+        { name: "Team", children: [
+          {name:"Technical Lead"}, {name:"Team Mentorship"}, {name:"Hiring"},
+          {name:"Stakeholder Comms"}, {name:"3–5 Engineer Teams"}
+        ]}
+      ]
+    }
+  ]
+};
+
+/* ── Node Builder ──────────────────────────────────────────── */
+let UID = 0;
+
+function buildTree(data, parent, depth) {
+  const node = { data, parent, depth, id: ++UID, x: 0, y: 0, rows: 0, children: null, _children: null };
+  const kids = (data.children || []).map(d => buildTree(d, node, depth + 1));
+  if (depth <= 0) { node.children = kids; }
+  else if (depth === 1) { node._children = kids; }
+  else { node.children = kids.length ? kids : null; }
+  return node;
+}
+
+function allDescendants(node) {
+  const out = [node];
+  (node.children || []).forEach(c => out.push(...allDescendants(c)));
+  return out;
+}
+
+function allLinks(node) {
+  const out = [];
+  (node.children || []).forEach(c => { out.push({ s: node, t: c }); out.push(...allLinks(c)); });
+  return out;
+}
+
+/* ── Layout ────────────────────────────────────────────────── */
+const COL_W = 260;
+const ROW_H = 28;
+
+function countRows(node) {
+  const kids = node.children || [];
+  node.rows = kids.length ? kids.reduce((s, c) => s + countRows(c), 0) : 1;
+  return node.rows;
+}
+
+function assignPos(node, r0, depth) {
+  node.depth = depth;
+  node.y = depth * COL_W;
+  const kids = node.children || [];
+  if (!kids.length) { node.x = r0 * ROW_H; return; }
+  let cur = r0;
+  kids.forEach(c => { assignPos(c, cur, depth + 1); cur += c.rows; });
+  node.x = (kids[0].x + kids[kids.length - 1].x) / 2;
+}
+
+function computeLayout(root) { countRows(root); assignPos(root, 0, 0); }
+
+/* ── Link path ─────────────────────────────────────────────── */
+function linkPath(s, t) {
+  const sx = s.y, sy = s.x, tx = t.y, ty = t.x;
+  const mx = (sx + tx) / 2;
+  return `M${sx},${sy}C${mx},${sy} ${mx},${ty} ${tx},${ty}`;
+}
+
+/* ── Color helpers ─────────────────────────────────────────── */
+function cssVar(v) { return getComputedStyle(document.body).getPropertyValue(v).trim(); }
+
+function getDomainColor(node) {
+  if (node.depth === 0) return cssVar('--c-root');
+  let n = node;
+  while (n.depth > 1) n = n.parent;
+  return cssVar('--c-' + (n.data.cid || '')) || '#888';
+}
+
+function nodeRadius(depth) { return depth === 0 ? 9 : depth === 1 ? 7 : depth === 2 ? 5 : 3.5; }
+function nodeFontSize(depth) { return depth === 0 ? 15 : depth === 1 ? 14 : depth === 2 ? 12.5 : 11.5; }
+
+function pillW(text, depth) { return text.length * (depth === 2 ? 6.8 : 6.2) + (depth === 2 ? 20 : 16); }
+function pillH(depth) { return depth === 2 ? 18 : 16; }
+function pillY(depth) { return depth === 2 ? -9 : -8; }
+
+function labelColor(node) {
+  const light = document.body.classList.contains('light');
+  if (node.depth === 0) return light ? '#111' : '#f2f2f2';
+  if (node.depth === 1) return light ? '#1A1A1F' : '#e8e8e8';
+  return getDomainColor(node);
+}
+
+/* ── SVG helpers ───────────────────────────────────────────── */
+const NS = 'http://www.w3.org/2000/svg';
+function el(tag, attrs) {
+  const e = document.createElementNS(NS, tag);
+  Object.entries(attrs || {}).forEach(([k, v]) => e.setAttribute(k, v));
+  return e;
+}
+
+/* ── Render state ──────────────────────────────────────────── */
+const nodesLayer = document.getElementById('nodes-layer');
+const linksLayer = document.getElementById('links-layer');
+const nodeEls = new Map();   // id → <g>
+const linkEls = new Map();   // "sid-tid" → <path>
+
+function renderUpdate() {
+  const nodes = allDescendants(root);
+  const links = allLinks(root);
+
+  /* ── Links ── */
+  const newLinkKeys = new Set();
+  links.forEach(({ s, t }) => {
+    const key = `${s.id}-${t.id}`;
+    newLinkKeys.add(key);
+    const color = getDomainColor(t);
+    const opacity = t.depth === 1 ? 0.55 : 0.28;
+    const w = t.depth === 1 ? 1.5 : 1;
+    if (linkEls.has(key)) {
+      const p = linkEls.get(key);
+      p.setAttribute('d', linkPath(s, t));
+      p.setAttribute('stroke', color);
+      p.setAttribute('stroke-opacity', opacity);
+    } else {
+      const p = el('path', {
+        class: 'link-path',
+        d: linkPath(s.parent || s, t),
+        stroke: color,
+        'stroke-opacity': 0,
+        'stroke-width': w,
+      });
+      linksLayer.appendChild(p);
+      linkEls.set(key, p);
+      requestAnimationFrame(() => {
+        p.setAttribute('d', linkPath(s, t));
+        p.setAttribute('stroke-opacity', opacity);
+      });
+    }
+  });
+  linkEls.forEach((p, key) => {
+    if (!newLinkKeys.has(key)) {
+      p.setAttribute('stroke-opacity', 0);
+      setTimeout(() => p.remove(), 360);
+      linkEls.delete(key);
+    }
+  });
+
+  /* ── Nodes ── */
+  const newNodeIds = new Set(nodes.map(n => n.id));
+  nodes.forEach(node => {
+    const color = getDomainColor(node);
+    const r = nodeRadius(node.depth);
+    const fs = nodeFontSize(node.depth);
+    const lc = labelColor(node);
+    const fill = node._children ? color + '14' : (!node.children ? color + 'cc' : color + '44');
+    const px = node.y, py = node.x;
+
+    if (nodeEls.has(node.id)) {
+      const g = nodeEls.get(node.id);
+      g.style.transform = `translate(${px}px,${py}px)`;
+      const circ = g.querySelector('.nc');
+      if (circ) {
+        circ.setAttribute('fill', fill);
+        circ.setAttribute('stroke', color);
+        circ.setAttribute('r', r);
+      }
+      const ring = g.querySelector('.nr');
+      if (ring) ring.setAttribute('stroke', color);
+      const txt = g.querySelector('.nl');
+      if (txt) txt.setAttribute('fill', lc);
+      const pill = g.querySelector('.np');
+      if (pill) {
+        pill.setAttribute('fill', color + '1a');
+        pill.setAttribute('stroke', color + '55');
+        pill.setAttribute('width', pillW(node.data.name, node.depth));
+      }
+    } else {
+      /* Create new node */
+      const origin = node.parent ? { x: node.parent.y, y: node.parent.x } : { x: 0, y: 0 };
+      const g = el('g', { class: 'node-g' });
+      g.style.transform = `translate(${origin.x}px,${origin.y}px)`;
+      g.style.opacity = '0';
+
+      if (node.depth <= 1) {
+        const ring = el('circle', {
+          class: 'nr', r: r + 7, fill: 'none',
+          stroke: color, 'stroke-width': 1, 'stroke-opacity': 0.22
+        });
+        g.appendChild(ring);
+      }
+
+      const circ = el('circle', {
+        class: 'nc', r, fill, stroke: color, 'stroke-width': 1.5
+      });
+      g.appendChild(circ);
+
+      if (node.depth >= 2) {
+        const pill = el('rect', {
+          class: 'np', rx: 3, ry: 3,
+          x: r + 4, y: pillY(node.depth),
+          width: pillW(node.data.name, node.depth), height: pillH(node.depth),
+          fill: color + '1a', stroke: color + '55', 'stroke-width': 1
+        });
+        g.appendChild(pill);
+      }
+
+      const txt = el('text', {
+        class: 'nl', 'dominant-baseline': 'middle',
+        x: r + 8, fill: lc, 'font-size': fs,
+        'font-weight': node.depth <= 1 ? '500' : '400',
+        'font-family': '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+        'pointer-events': 'none', 'user-select': 'none'
+      });
+      txt.textContent = node.data.name;
+      g.appendChild(txt);
+
+      if (node.children || node._children) {
+        g.style.cursor = 'pointer';
+        g.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (node.children) { node._children = node.children; node.children = null; }
+          else { node.children = node._children; node._children = null; }
+          computeLayout(root);
+          renderUpdate();
+          nudgeView();
+        });
+      }
+
+      nodesLayer.appendChild(g);
+      nodeEls.set(node.id, g);
+
+      requestAnimationFrame(() => {
+        g.style.transform = `translate(${px}px,${py}px)`;
+        g.style.opacity = '1';
+      });
+    }
+  });
+
+  nodeEls.forEach((g, id) => {
+    if (!newNodeIds.has(id)) {
+      g.style.opacity = '0';
+      setTimeout(() => g.remove(), 360);
+      nodeEls.delete(id);
+    }
+  });
+}
+
+/* ── Zoom / Pan ────────────────────────────────────────────── */
+const zoomLayer  = document.getElementById('zoom-layer');
+const zoomBadge  = document.getElementById('zoom-badge');
+const hintEl     = document.getElementById('hint');
+const svgEl      = document.getElementById('mindmap');
+let tr = { k: 1, tx: 0, ty: 0 };
+
+function applyTr() {
+  zoomLayer.setAttribute('transform', `translate(${tr.tx},${tr.ty}) scale(${tr.k})`);
+  zoomBadge.textContent = Math.round(tr.k * 100) + '%';
+}
+
+svgEl.addEventListener('wheel', e => {
+  e.preventDefault();
+  const rect = svgEl.getBoundingClientRect();
+  const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+  const factor = e.deltaY < 0 ? 1.12 : 0.9;
+  const nk = Math.min(3, Math.max(0.12, tr.k * factor));
+  tr.tx = mx - (mx - tr.tx) * (nk / tr.k);
+  tr.ty = my - (my - tr.ty) * (nk / tr.k);
+  tr.k = nk;
+  applyTr();
+}, { passive: false });
+
+let dragging = false, ds = { x: 0, y: 0 };
+svgEl.addEventListener('pointerdown', e => {
+  dragging = true;
+  ds = { x: e.clientX - tr.tx, y: e.clientY - tr.ty };
+  svgEl.setPointerCapture(e.pointerId);
+  hintEl.style.opacity = '0';
+});
+svgEl.addEventListener('pointermove', e => {
+  if (!dragging) return;
+  tr.tx = e.clientX - ds.x;
+  tr.ty = e.clientY - ds.y;
+  applyTr();
+});
+svgEl.addEventListener('pointerup', () => { dragging = false; });
+
+/* ── Fit view ──────────────────────────────────────────────── */
+function fitView(delay) {
+  setTimeout(() => {
+    const nodes = allDescendants(root);
+    if (!nodes.length) return;
+    let minY = Infinity, maxY = -Infinity, minX = Infinity, maxX = -Infinity;
+    nodes.forEach(n => {
+      if (n.y < minY) minY = n.y; if (n.y > maxY) maxY = n.y;
+      if (n.x < minX) minX = n.x; if (n.x > maxX) maxX = n.x;
+    });
+    const W = svgEl.clientWidth || 900, H = svgEl.clientHeight || 600;
+    const labelPad = 200;
+    const cW = maxY - minY + labelPad;
+    const cH = maxX - minX + 80;
+    const k = Math.min(W / cW, H / cH, 1.1) * 0.88;
+    const tx = (W - cW * k) / 2 - minY * k + 20;
+    const ty = (H - cH * k) / 2 - minX * k + 40;
+    tr = { k, tx, ty };
+    applyTr();
+  }, delay || 0);
+}
+
+function nudgeView() {
+  setTimeout(() => {
+    const nodes = allDescendants(root);
+    const W = svgEl.clientWidth || 900;
+    let maxSx = -Infinity;
+    nodes.forEach(n => {
+      const lw = n.depth >= 2 ? pillW(n.data.name, n.depth) + 20 : 200;
+      const sx = n.y * tr.k + tr.tx + lw;
+      if (sx > maxSx) maxSx = sx;
+    });
+    const overflow = maxSx - (W - 24);
+    if (overflow > 0) {
+      tr.tx -= overflow;
+      applyTr();
+    }
+  }, 380);
+}
+
+/* ── Collapse/expand helpers ───────────────────────────────── */
+function collapseAll(node) {
+  if (node.children) { node._children = node.children; node.children = null; node._children.forEach(collapseAll); }
+}
+function expandAll(node) {
+  if (node._children) { node.children = node._children; node._children = null; }
+  if (node.children) node.children.forEach(expandAll);
+}
+function expandOneLevel(node) {
+  if (node._children) { node.children = node._children; node._children = null; }
+}
+
+/* ── Depth presets ─────────────────────────────────────────── */
+function setDepth(d) {
+  root.children.forEach(collapseAll);
+  if (d >= 2) root.children.forEach(expandOneLevel);
+  if (d >= 3) {
+    root.children.forEach(c => {
+      if (!c.children) { c.children = c._children; c._children = null; }
+      (c.children || []).forEach(expandOneLevel);
+    });
+  }
+  computeLayout(root); renderUpdate(); fitView(360);
+  document.querySelectorAll('.depth-pip').forEach(p => p.classList.toggle('active', +p.dataset.depth === d));
+}
+
+document.querySelectorAll('.depth-pip').forEach(p => p.addEventListener('click', () => setDepth(+p.dataset.depth)));
+
+/* ── Main controls ─────────────────────────────────────────── */
+document.getElementById('btn-expand').addEventListener('click', () => {
+  expandAll(root); computeLayout(root); renderUpdate(); fitView(360);
+  document.querySelectorAll('.depth-pip').forEach(p => p.classList.remove('active'));
+});
+document.getElementById('btn-collapse').addEventListener('click', () => {
+  root.children.forEach(collapseAll); computeLayout(root); renderUpdate(); fitView(360);
+  document.querySelector('.depth-pip[data-depth="1"]').classList.add('active');
+  document.querySelector('.depth-pip[data-depth="2"]').classList.remove('active');
+  document.querySelector('.depth-pip[data-depth="3"]').classList.remove('active');
+});
+document.getElementById('btn-reset').addEventListener('click', () => fitView(0));
+
+document.getElementById('btn-theme').addEventListener('click', function() {
+  document.body.classList.toggle('light');
+  this.textContent = document.body.classList.contains('light') ? '\u{1F319}' : '☀︎';
+  renderUpdate();
+});
+
+/* ── Keyboard ──────────────────────────────────────────────── */
+document.addEventListener('keydown', e => {
+  if (e.key === '1') setDepth(1);
+  if (e.key === '2') setDepth(2);
+  if (e.key === '3') setDepth(3);
+  if (e.key === 'r' || e.key === 'R') fitView(0);
+});
+
+/* ── Init ──────────────────────────────────────────────────── */
+const root = buildTree(TREE_DATA, null, 0);
+computeLayout(root);
+renderUpdate();
+fitView(80);
+</script>
+</body>
+</html>
