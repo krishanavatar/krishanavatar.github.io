@@ -1,0 +1,786 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LLM Cost Optimization in Production</title>
+<script>
+  (function () {
+    try {
+      var saved = localStorage.getItem('theme');
+      var theme = saved || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+      document.documentElement.setAttribute('data-theme', theme);
+    } catch (e) {}
+  })();
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;0,6..72,500;0,6..72,600;0,6..72,700;1,6..72,300;1,6..72,400&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:           #F5F1EB;
+    --bg-alt:       #EDEAE3;
+    --surface:      #FFFFFF;
+    --surface-tint: #FAF8F5;
+    --border:       #DDD9D0;
+    --border-light: #EAE7E0;
+    --text:         #1A1714;
+    --text-body:    #3D3A35;
+    --text-muted:   #6B6760;
+    --text-subtle:  #9B9892;
+    --accent:       #C85C2D;
+    --accent-light: #E8895D;
+    --accent-bg:    #FDF1EB;
+    --accent-border:#F0C4A8;
+    --green:        #2A7A4B;
+    --green-bg:     #EAF5EF;
+    --green-border: #A8D9BC;
+    --blue:         #2563A8;
+    --blue-bg:      #EAF1FA;
+    --blue-border:  #A8C5E8;
+    --red:          #B83535;
+    --red-bg:       #FAEBEB;
+    --red-border:   #E8AAAA;
+    --code-bg:      #1A1714;
+    --shadow:       rgba(200,92,45,0.08);
+    --serif:        'Newsreader', Georgia, serif;
+    --sans:         'Inter', system-ui, sans-serif;
+    --mono:         'JetBrains Mono', 'Courier New', monospace;
+    color-scheme: light;
+  }
+  [data-theme="dark"] {
+    --bg:           #14110D;
+    --bg-alt:       #1E1A14;
+    --surface:      #1A1611;
+    --surface-tint: #211C16;
+    --border:       #332C24;
+    --border-light: #2A241D;
+    --text:         #F2EEE7;
+    --text-body:    #D8D2C8;
+    --text-muted:   #A39C90;
+    --text-subtle:  #7A7468;
+    --accent:       #E8895D;
+    --accent-light: #F0A079;
+    --accent-bg:    #2C1E14;
+    --accent-border:#5A3826;
+    --green:        #5FD699;
+    --green-bg:     #14241B;
+    --green-border: #2E5640;
+    --blue:         #6FB0F0;
+    --blue-bg:      #142233;
+    --blue-border:  #2C4A6E;
+    --red:          #F08585;
+    --red-bg:       #2E1717;
+    --red-border:   #663434;
+    --code-bg:      #0E0B08;
+    --shadow:       rgba(0,0,0,0.45);
+    color-scheme: dark;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg);
+    color: var(--text-body);
+    font-family: var(--sans);
+    font-size: 17px;
+    line-height: 1.75;
+    font-weight: 400;
+  }
+  nav {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 0 48px;
+    height: 52px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .nav-brand { font-family: var(--sans); font-size: 13px; font-weight: 600; color: var(--text); letter-spacing: 0.01em; text-decoration: none; }
+  .nav-right { display: flex; align-items: center; gap: 20px; font-size: 13px; color: var(--text-muted); }
+  .nav-tag { background: var(--accent); color: #fff; font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 3px; letter-spacing: 0.04em; }
+  .theme-toggle { background: none; border: 1px solid var(--border); border-radius: 6px; width: 30px; height: 30px; flex-shrink: 0; cursor: pointer; color: var(--text-muted); font-size: 14px; line-height: 1; display: inline-flex; align-items: center; justify-content: center; transition: color 0.15s, border-color 0.15s; }
+  .theme-toggle:hover { color: var(--accent); border-color: var(--accent-border); }
+  .theme-icon-sun { display: none; }
+  [data-theme="dark"] .theme-icon-sun  { display: inline; }
+  [data-theme="dark"] .theme-icon-moon { display: none; }
+  .page-wrap { max-width: 760px; margin: 0 auto; padding: 0 24px 80px; }
+  .hero { padding: 64px 0 48px; border-bottom: 1px solid var(--border); margin-bottom: 48px; }
+  .hero-eyebrow { font-family: var(--sans); font-size: 12px; font-weight: 600; color: var(--accent); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 16px; }
+  .hero h1 { font-family: var(--serif); font-size: clamp(34px, 5vw, 52px); font-weight: 600; line-height: 1.1; letter-spacing: -0.02em; color: var(--text); margin-bottom: 20px; }
+  .hero-deck { font-size: 18px; line-height: 1.65; color: var(--text-muted); max-width: 640px; font-weight: 300; }
+  .hero-meta { margin-top: 24px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12px; color: var(--text-subtle); font-family: var(--mono); }
+  .hero-meta-sep { color: var(--border); }
+  .prose p { color: var(--text-body); margin-bottom: 20px; font-size: 17px; line-height: 1.78; }
+  .prose p:last-child { margin-bottom: 0; }
+  strong { color: var(--text); font-weight: 600; }
+  em { font-style: italic; color: var(--text-body); }
+  .section { margin-top: 56px; scroll-margin-top: 72px; }
+  .section-label { font-family: var(--sans); font-size: 11px; font-weight: 600; color: var(--accent); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 8px; }
+  .section h2 { font-family: var(--serif); font-size: 28px; font-weight: 600; line-height: 1.2; letter-spacing: -0.01em; color: var(--text); margin-bottom: 24px; }
+  .section h2 a.anchor { color: inherit; text-decoration: none; position: relative; }
+  .section h2 a.anchor:hover::before { content: '#'; position: absolute; left: -22px; color: var(--accent); font-weight: 400; }
+  h3 { font-family: var(--serif); font-size: 20px; font-weight: 600; color: var(--text); margin: 32px 0 14px; letter-spacing: -0.01em; }
+  .banner { background: var(--accent-bg); border: 1px solid var(--accent-border); border-left: 3px solid var(--accent); border-radius: 6px; padding: 16px 20px; margin-bottom: 40px; display: flex; gap: 12px; align-items: flex-start; }
+  .banner-badge { background: var(--accent); color: #fff; font-family: var(--mono); font-size: 10px; font-weight: 500; padding: 2px 8px; border-radius: 3px; white-space: nowrap; flex-shrink: 0; margin-top: 2px; }
+  .banner p { font-size: 14px; color: var(--text-muted); line-height: 1.6; margin: 0; }
+  .plain-english { background: var(--surface); border: 1px solid var(--border); border-top: 3px solid var(--accent); border-radius: 0 0 8px 8px; padding: 28px 32px; margin: 0 0 56px; }
+  .plain-english .pe-label { font-family: var(--sans); font-size: 11px; font-weight: 700; color: var(--accent); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 16px; }
+  .pe-list { list-style: none; padding: 0; }
+  .pe-list li { display: flex; gap: 14px; align-items: flex-start; padding: 14px 0; border-bottom: 1px solid var(--border-light); font-size: 16px; color: var(--text-body); line-height: 1.6; }
+  .pe-list li:last-child { border-bottom: none; }
+  .pe-num { width: 26px; height: 26px; background: var(--accent); color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0; margin-top: 1px; font-family: var(--mono); }
+  .toc { background: var(--surface-tint); border: 1px solid var(--border); border-radius: 8px; padding: 20px 24px 22px; margin: 0 0 56px; }
+  .toc-label { font-family: var(--sans); font-size: 11px; font-weight: 700; color: var(--accent); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 14px; }
+  .toc-list { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px 28px; }
+  .toc-list li { display: flex; align-items: baseline; gap: 10px; font-size: 14px; line-height: 1.5; }
+  .toc-num { font-family: var(--mono); font-size: 11px; color: var(--text-subtle); flex-shrink: 0; width: 18px; }
+  .toc-list a { color: var(--text-body); text-decoration: none; border-bottom: 1px solid transparent; transition: color 0.15s, border-color 0.15s; }
+  .toc-list a:hover { color: var(--accent); border-bottom-color: var(--accent-border); }
+  .cards-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin: 24px 0; }
+  .cards-grid:has(> .card:nth-child(2):last-child), .cards-grid:has(> .card:nth-child(4):last-child), .cards-grid.cols-2 { grid-template-columns: repeat(2, 1fr); }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 20px 22px; transition: border-color 0.2s, box-shadow 0.2s; }
+  .card:hover { border-color: var(--accent-border); box-shadow: 0 2px 8px var(--shadow); }
+  .card h4 { font-family: var(--sans); font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 7px; }
+  .card p { font-size: 13px; color: var(--text-muted); line-height: 1.6; margin: 0; }
+  .card.card-red { border-color: var(--red-border); }
+  .card.card-red .card-icon-badge { display: inline-block; background: var(--red-bg); color: var(--red); font-size: 10px; font-weight: 700; letter-spacing: 0.06em; padding: 2px 7px; border-radius: 3px; margin-bottom: 10px; text-transform: uppercase; }
+  .card.card-green { border-color: var(--green-border); }
+  .card.card-green .card-icon-badge { display: inline-block; background: var(--green-bg); color: var(--green); font-size: 10px; font-weight: 700; letter-spacing: 0.06em; padding: 2px 7px; border-radius: 3px; margin-bottom: 10px; text-transform: uppercase; }
+  .card.card-blue { border-color: var(--blue-border); }
+  .card.card-blue .card-icon-badge { display: inline-block; background: var(--blue-bg); color: var(--blue); font-size: 10px; font-weight: 700; letter-spacing: 0.06em; padding: 2px 7px; border-radius: 3px; margin-bottom: 10px; text-transform: uppercase; }
+  .code-block { background: var(--code-bg); border-radius: 7px; overflow: hidden; margin: 20px 0; }
+  .code-block .cb-label { padding: 9px 16px; background: rgba(255,255,255,0.06); border-bottom: 1px solid rgba(255,255,255,0.08); font-family: var(--mono); font-size: 11px; color: #888; letter-spacing: 0.06em; text-transform: uppercase; display: flex; align-items: center; justify-content: space-between; }
+  .code-block pre { padding: 20px; font-family: var(--mono); font-size: 13.5px; line-height: 1.7; color: #e8e8e8; overflow-x: auto; white-space: pre; }
+  .code-block .tok-key  { color: #fdba74; }
+  .code-block .tok-val  { color: #86efac; }
+  .code-block .tok-cmt  { color: #6b7280; font-style: italic; }
+  .code-block .tok-str  { color: #93c5fd; }
+  .code-block .tok-acc  { color: #fde047; }
+  .callout { background: var(--accent-bg); border: 1px solid var(--accent-border); border-left: 3px solid var(--accent); border-radius: 0 6px 6px 0; padding: 18px 22px; margin: 24px 0; }
+  .callout .callout-lbl { font-size: 11px; font-weight: 700; color: var(--accent); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 6px; }
+  .callout p { font-size: 15px; color: var(--text-muted); margin: 0; line-height: 1.7; }
+  ul.dl { list-style: none; padding: 0; margin: 0 0 24px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--surface); }
+  ul.dl li { position: relative; padding: 13px 18px 13px 34px; font-size: 15px; color: var(--text-body); border-bottom: 1px solid var(--border-light); line-height: 1.65; }
+  ul.dl li:last-child { border-bottom: none; }
+  ul.dl li::before { content: '→'; position: absolute; left: 14px; top: 13px; color: var(--accent); font-size: 14px; }
+  .data-table { overflow-x: auto; margin: 24px 0; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+  .data-table table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  .data-table table.fixed { table-layout: fixed; }
+  .data-table thead th { padding: 11px 16px; text-align: left; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; background: var(--bg-alt); border-bottom: 1px solid var(--border); color: var(--text-muted); white-space: nowrap; vertical-align: bottom; }
+  .data-table tbody td { padding: 11px 16px; border-bottom: 1px solid var(--border-light); color: var(--text-body); vertical-align: top; line-height: 1.55; overflow-wrap: anywhere; }
+  .data-table tbody tr:last-child td { border-bottom: none; }
+  .data-table tbody tr:hover td { background: var(--surface-tint); }
+  .data-table tbody td:first-child { font-weight: 600; color: var(--text); }
+  .data-table th.center, .data-table td.center { text-align: center; }
+  .data-table th.num, .data-table td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .td-yes { color: var(--green); font-weight: 600; }
+  .td-no  { color: var(--red);   font-weight: 600; }
+  .td-mono { font-family: var(--mono); font-size: 12px; color: var(--accent); }
+  footer { background: var(--surface); border-top: 1px solid var(--border); padding: 20px 48px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; font-size: 13px; color: var(--text-muted); }
+  footer a { color: var(--accent); text-decoration: none; }
+  footer a:hover { text-decoration: underline; }
+  .footer-refs { font-size: 12px; color: var(--text-subtle); }
+  @media (max-width: 600px) {
+    nav { padding: 0 20px; }
+    .hero { padding: 40px 0 36px; }
+    .page-wrap { padding: 0 16px 60px; }
+    footer { padding: 16px 20px; }
+    .plain-english { padding: 20px; }
+    .toc-list { grid-template-columns: 1fr; }
+    .cards-grid, .cards-grid.cols-2, .cards-grid.cols-3 { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <a class="nav-brand" href="/">krishanavatar.github.io</a>
+  <div class="nav-right">
+    <span>AI / LLM Engineering</span>
+    <span class="nav-tag">JUL 2026</span>
+    <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle dark mode" title="Toggle dark mode">
+      <span class="theme-icon-moon" aria-hidden="true">&#9790;</span>
+      <span class="theme-icon-sun" aria-hidden="true">&#9728;</span>
+    </button>
+  </div>
+</nav>
+
+<div class="page-wrap">
+
+  <header class="hero">
+    <div class="hero-eyebrow">Production Engineering — LLM Cost</div>
+    <h1>LLM Cost Optimization in Production</h1>
+    <p class="hero-deck">How I reduced inference spend by 60% on an enterprise IDP platform using prompt caching, model routing, and token-level prompt engineering — without touching accuracy.</p>
+    <div class="hero-meta">
+      <span>krishanavatar.github.io</span>
+      <span class="hero-meta-sep">/</span>
+      <span>July 2026</span>
+      <span class="hero-meta-sep">/</span>
+      <span>10 min read</span>
+    </div>
+  </header>
+
+  <div class="banner">
+    <span class="banner-badge">CONTEXT</span>
+    <p>This is drawn from experience building a production document intelligence system — high-volume, structured-document extraction, multi-provider. The framework is provider-agnostic. Numbers are from a live benchmark set unless labeled anecdotal.</p>
+  </div>
+
+  <div class="plain-english">
+    <div class="pe-label">The Three Levers</div>
+    <ul class="pe-list">
+      <li>
+        <span class="pe-num">1</span>
+        <div><strong>Caching</strong> — Prompt caching at the provider level eliminates redundant inference on repeated system prompts and static context. On document pipelines, this alone cuts 40–50% of token spend.</div>
+      </li>
+      <li>
+        <span class="pe-num">2</span>
+        <div><strong>Model routing</strong> — Not every extraction task needs GPT-4o or Claude Opus. Routing simple classification to a smaller model and reserving the frontier model for ambiguous cases reduces cost by 30–40% with no accuracy regression on clear-cut documents.</div>
+      </li>
+      <li>
+        <span class="pe-num">3</span>
+        <div><strong>Prompt compression</strong> — Verbose prompts are a tax. Structured, minimal prompts with explicit output schemas reduce input tokens by 25–35% and improve parse reliability.</div>
+      </li>
+    </ul>
+  </div>
+
+  <nav class="toc" aria-label="Jump to section">
+    <div class="toc-label">Jump to</div>
+    <ol class="toc-list">
+      <li><span class="toc-num">01</span><a href="#the-bill">The Invoice That Triggered This</a></li>
+      <li><span class="toc-num">02</span><a href="#platform-context">Platform Context</a></li>
+      <li><span class="toc-num">03</span><a href="#prompt-caching">Prompt Caching (Anthropic + Vertex AI)</a></li>
+      <li><span class="toc-num">04</span><a href="#model-routing">Model Routing (GPT-4o / Gemini 2.5 / Claude 4)</a></li>
+      <li><span class="toc-num">05</span><a href="#prompt-compression">Prompt Compression</a></li>
+      <li><span class="toc-num">06</span><a href="#the-config">The Config Layer</a></li>
+      <li><span class="toc-num">07</span><a href="#results">What the Numbers Looked Like</a></li>
+      <li><span class="toc-num">08</span><a href="#breaks">Where This Breaks</a></li>
+      <li><span class="toc-num">09</span><a href="#frame">The Frame to Leave On</a></li>
+    </ol>
+  </nav>
+
+  <div class="section" id="the-bill">
+    <div class="section-label">01 — The Problem</div>
+    <h2><a class="anchor" href="#the-bill">The Invoice That Triggered This</a></h2>
+    <div class="prose">
+      <p>At some point in a production LLM system, the billing dashboard stops being background noise and starts being a line item in a business case. For us, that moment came when a single month's inference bill crossed a threshold that made the product commercially unviable at scale. The accuracy was good. The throughput was acceptable. The cost was not.</p>
+      <p>The documents were structured forms — high-volume, repetitive layouts, same fields in roughly the same positions every time. A major insurance carrier we were building for processed tens of thousands of these monthly. Every page goes through OCR, then LLM extraction, then validation. The LLM step was the one eating money. And the irony was that most of the spend wasn't on hard documents. It was on easy ones — the standard forms that arrived clean and consistent, getting sent to the same frontier model regardless.</p>
+      <p>That's not a model problem. That's a routing problem. And once you see it that way, the fix is mechanical.</p>
+    </div>
+  </div>
+
+  <div class="section" id="platform-context">
+    <div class="section-label">02 — Architecture</div>
+    <h2><a class="anchor" href="#platform-context">Platform Context</a></h2>
+    <div class="prose">
+      <p>The system routes documents through a pipeline: ingest → OCR → classification → LLM extraction → validation → output. The LLM extraction step is where we call the model to produce structured JSON from raw OCR text, guided by a schema and a system prompt.</p>
+      <p>Three providers run in production: OpenAI (GPT-4o, GPT-4o-mini), Google (Gemini 2.5 Flash, Gemini 2.5 Pro — both via Vertex AI), and Anthropic (Claude Haiku 4.5, Claude Sonnet 4). The provider and model tier are config-driven — no code changes required to switch. That config layer is what makes the optimization tractable. Without it, cost reduction is a manual migration each time.</p>
+    </div>
+
+    <div class="code-block">
+      <div class="cb-label">llm-config.yaml — provider config</div>
+      <pre><span class="tok-cmt"># Provider config — drives model selection per document type and confidence tier</span>
+<span class="tok-key">llm:</span>
+  <span class="tok-key">default_provider:</span> <span class="tok-val">openai</span>
+  <span class="tok-key">providers:</span>
+    <span class="tok-key">openai:</span>
+      <span class="tok-key">high_confidence:</span>  <span class="tok-val">gpt-4o-mini</span>     <span class="tok-cmt"># cheap, fast</span>
+      <span class="tok-key">low_confidence:</span>   <span class="tok-val">gpt-4o</span>          <span class="tok-cmt"># frontier, ambiguous docs</span>
+    <span class="tok-key">anthropic:</span>
+      <span class="tok-key">high_confidence:</span>  <span class="tok-val">claude-haiku-4-5-20251001</span>
+      <span class="tok-key">low_confidence:</span>   <span class="tok-val">claude-sonnet-4-20250514</span>
+    <span class="tok-key">google:</span>
+      <span class="tok-key">high_confidence:</span>  <span class="tok-val">gemini-2.5-flash</span>  <span class="tok-cmt"># via Vertex AI</span>
+      <span class="tok-key">low_confidence:</span>   <span class="tok-val">gemini-2.5-pro</span>    <span class="tok-cmt"># via Vertex AI</span>
+  <span class="tok-key">routing:</span>
+    <span class="tok-key">confidence_threshold:</span> <span class="tok-val">0.85</span>   <span class="tok-cmt"># OCR confidence from prior step</span>
+    <span class="tok-key">fallback_to_frontier:</span> <span class="tok-val">true</span></pre>
+    </div>
+  </div>
+
+  <div class="section" id="prompt-caching">
+    <div class="section-label">03 — Caching</div>
+    <h2><a class="anchor" href="#prompt-caching">Prompt Caching: The Biggest Win</a></h2>
+    <div class="prose">
+      <p>Prompt caching is the single highest-ROI optimization for document pipelines. The idea is simple: if the same system prompt and schema appear in every request, the provider can cache the KV computation from those tokens and charge you a fraction of the input price for subsequent hits. Anthropic charges 10% of the normal input rate for cache hits. OpenAI charges 50%.</p>
+      <p>On our platform, the system prompt and schema together run about 800–1,200 tokens per request. With 50,000 documents a month, the uncached cost of just that static context is non-trivial. With caching enabled and cache hit rates above 90%, those tokens cost 10 cents on the dollar.</p>
+      <p>The implementation requirement: the cached prefix must be structurally stable. Any variation in the system prompt — even a timestamp injected at runtime — breaks the cache. We audited our prompts and removed every dynamic element from the cacheable prefix, pushing variable content (the document text itself) to the user turn only.</p>
+    </div>
+
+    <div class="code-block">
+      <div class="cb-label">Python — Anthropic prompt caching</div>
+      <pre><span class="tok-key">import</span> anthropic
+
+client = anthropic.Anthropic()
+
+<span class="tok-cmt"># System prompt and schema are static — mark for caching</span>
+<span class="tok-cmt"># Cache TTL: 5 minutes (Anthropic). Reset on any content change.</span>
+response = client.messages.create(
+    model=<span class="tok-str">"claude-sonnet-4-20250514"</span>,
+    max_tokens=<span class="tok-val">1024</span>,
+    system=[
+        {
+            <span class="tok-str">"type"</span>: <span class="tok-str">"text"</span>,
+            <span class="tok-str">"text"</span>: SYSTEM_PROMPT,         <span class="tok-cmt"># static, ~600 tokens</span>
+            <span class="tok-str">"cache_control"</span>: {<span class="tok-str">"type"</span>: <span class="tok-str">"ephemeral"</span>}
+        },
+        {
+            <span class="tok-str">"type"</span>: <span class="tok-str">"text"</span>,
+            <span class="tok-str">"text"</span>: OUTPUT_SCHEMA,        <span class="tok-cmt"># static, ~400 tokens</span>
+            <span class="tok-str">"cache_control"</span>: {<span class="tok-str">"type"</span>: <span class="tok-str">"ephemeral"</span>}
+        }
+    ],
+    messages=[
+        {
+            <span class="tok-str">"role"</span>: <span class="tok-str">"user"</span>,
+            <span class="tok-str">"content"</span>: f<span class="tok-str">"Extract from this document:\n\n{ocr_text}"</span>
+            <span class="tok-cmt"># dynamic content goes here — NOT in the cache prefix</span>
+        }
+    ]
+)
+
+<span class="tok-cmt"># Check cache performance in response headers</span>
+usage = response.usage
+cache_hit  = usage.cache_read_input_tokens
+cache_miss = usage.cache_creation_input_tokens
+print(f<span class="tok-str">"Cache hit: {cache_hit} tokens @ 10% price"</span>)
+print(f<span class="tok-str">"Cache miss: {cache_miss} tokens @ 125% price (write overhead)"</span>)</pre>
+    </div>
+
+    <div class="callout">
+      <div class="callout-lbl">Cache write overhead</div>
+      <p>The first call that populates the cache costs 125% of the normal input price (Anthropic) or 100% (OpenAI, no write surcharge). On a high-volume pipeline, this is noise — the write overhead is recovered within 3–5 subsequent hits. On low-volume or sporadic workloads, caching is not worth it.</p>
+    </div>
+
+    <div class="prose">
+      <p>One more thing worth knowing: Anthropic's cache TTL is 5 minutes. If your pipeline has periods of inactivity longer than that, cached tokens expire and the next request pays the write price again. We added a lightweight keepalive — a minimal ping request every 4 minutes during idle periods — to hold the cache warm during business-hours processing windows.</p>
+    </div>
+
+    <h3>Vertex AI Context Caching — Gemini 2.5</h3>
+    <div class="prose">
+      <p>Vertex AI ships its own context caching layer for Gemini 2.5 Flash and Pro. The mechanics differ from Anthropic's: instead of marking a prefix in the API call, you create a <code>CachedContent</code> object ahead of time and attach it to subsequent model calls. The TTL is configurable up to 1 hour (versus Anthropic's fixed 5 minutes), which makes it better suited for pipelines with longer inter-batch gaps.</p>
+      <p>The tradeoff: Vertex AI's context caching has a minimum cached token threshold — your static context must be large enough to qualify. For small system prompts this is a non-starter, but for pipelines that load large schemas, few-shot extraction examples, or document templates, it's the right lever. Gemini 2.5 Flash also supports thinking budget control separately, so you can suppress chain-of-thought on the cheap tier and pay only for output tokens.</p>
+    </div>
+
+    <div class="code-block">
+      <div class="cb-label">Python — Vertex AI context caching with Gemini 2.5 Flash</div>
+      <pre><span class="tok-key">import</span> vertexai
+<span class="tok-key">import</span> datetime
+<span class="tok-key">from</span> vertexai <span class="tok-key">import</span> caching
+<span class="tok-key">from</span> vertexai.generative_models <span class="tok-key">import</span> GenerativeModel, Content, Part
+
+vertexai.init(project=<span class="tok-str">"my-gcp-project"</span>, location=<span class="tok-str">"us-central1"</span>)
+
+<span class="tok-cmt"># Create a CachedContent object for the static prefix.</span>
+<span class="tok-cmt"># TTL configurable to 1 hour — outlasts Anthropic's 5-min window.</span>
+cached_content = caching.CachedContent.create(
+    model_name=<span class="tok-str">"gemini-2.5-flash"</span>,
+    display_name=<span class="tok-str">"doc-extraction-context"</span>,
+    contents=[
+        Content(role=<span class="tok-str">"user"</span>, parts=[
+            Part.from_text(SYSTEM_PROMPT + <span class="tok-str">"\n\n"</span> + OUTPUT_SCHEMA)
+            <span class="tok-cmt"># large static context: prompt + schema + few-shot examples</span>
+        ])
+    ],
+    ttl=datetime.timedelta(hours=<span class="tok-val">1</span>),
+)
+
+<span class="tok-cmt"># Attach cached content to the model — all requests share the KV cache</span>
+model = GenerativeModel.from_cached_content(cached_content)
+
+response = model.generate_content(
+    f<span class="tok-str">"Extract from this document:\n\n{ocr_text}"</span>,
+    generation_config={
+        <span class="tok-str">"response_mime_type"</span>: <span class="tok-str">"application/json"</span>,
+        <span class="tok-str">"thinking_config"</span>: {<span class="tok-str">"thinking_budget"</span>: <span class="tok-val">0</span>}  <span class="tok-cmt"># disable thinking on cheap tier</span>
+    }
+)
+
+<span class="tok-cmt"># Cache usage in response metadata</span>
+meta = response.usage_metadata
+print(f<span class="tok-str">"Cached: {meta.cached_content_token_count} tokens"</span>)
+print(f<span class="tok-str">"Prompt: {meta.prompt_token_count} tokens"</span>)
+print(f<span class="tok-str">"Output: {meta.candidates_token_count} tokens"</span>)</pre>
+    </div>
+
+    <div class="callout">
+      <div class="callout-lbl">Vertex vs Direct API</div>
+      <p>Vertex AI adds IAM, VPC-SC, and audit logging that the direct Google AI API lacks — relevant for enterprise compliance. The model IDs are the same (<code>gemini-2.5-flash</code>, <code>gemini-2.5-pro</code>). If you're already on GCP, Vertex is the right path; otherwise the direct SDK is simpler to start with but loses the longer cache TTL.</p>
+    </div>
+  </div>
+
+  <div class="section" id="model-routing">
+    <div class="section-label">04 — Model Selection</div>
+    <h2><a class="anchor" href="#model-routing">Model Routing: Right Tool, Right Task</a></h2>
+    <div class="prose">
+      <p>Sending every document to a frontier model is the same mistake as using a sledgehammer to hang a picture frame. The frontier models (GPT-4o, Claude Sonnet 4, Gemini 2.5 Pro) are priced for their capability on hard problems. Standard structured forms with clean OCR are not hard problems.</p>
+      <p>Our routing logic uses OCR confidence as the primary signal. If the confidence score from the OCR step is above 0.85 — meaning the text was extracted cleanly, no smudges, no handwriting, no degraded scans — the document goes to the cheaper model tier. Below 0.85, it escalates to the frontier model. We tuned this threshold over four weeks of production data, comparing extraction accuracy across tiers at different confidence levels.</p>
+    </div>
+
+    <div class="data-table">
+      <table class="fixed">
+        <colgroup>
+          <col style="width:26%">
+          <col style="width:22%">
+          <col style="width:18%">
+          <col style="width:16%">
+          <col style="width:18%">
+        </colgroup>
+        <thead>
+          <tr>
+            <th>Model</th>
+            <th>Provider</th>
+            <th class="num">Input $/1M</th>
+            <th class="num">Output $/1M</th>
+            <th>Use case</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>GPT-4o-mini</td>
+            <td>OpenAI</td>
+            <td class="num">$0.15</td>
+            <td class="num">$0.60</td>
+            <td>High-confidence docs</td>
+          </tr>
+          <tr>
+            <td>GPT-4o</td>
+            <td>OpenAI</td>
+            <td class="num">$2.50</td>
+            <td class="num">$10.00</td>
+            <td>Ambiguous, complex</td>
+          </tr>
+          <tr>
+            <td>Claude Haiku 4.5</td>
+            <td>Anthropic</td>
+            <td class="num">$0.80</td>
+            <td class="num">$4.00</td>
+            <td>High-confidence docs</td>
+          </tr>
+          <tr>
+            <td>Claude Sonnet 4</td>
+            <td>Anthropic</td>
+            <td class="num">$3.00</td>
+            <td class="num">$15.00</td>
+            <td>Ambiguous, complex</td>
+          </tr>
+          <tr>
+            <td>Gemini 2.5 Flash</td>
+            <td>Google / Vertex</td>
+            <td class="num">$0.15</td>
+            <td class="num">$0.60</td>
+            <td>High-confidence docs</td>
+          </tr>
+          <tr>
+            <td>Gemini 2.5 Pro</td>
+            <td>Google / Vertex</td>
+            <td class="num">$1.25</td>
+            <td class="num">$10.00</td>
+            <td>Ambiguous, complex</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="prose">
+      <p>In practice, about 72% of our document volume clears the 0.85 confidence threshold. That 72% goes to the cheaper tier. The 28% that fails — degraded scans, handwritten fields, multi-column layouts — goes to the frontier model. The blended per-document cost dropped from $0.018 to $0.007, anecdotally. The extraction accuracy on the high-confidence tier was within 0.3% of the frontier model on our benchmark set.</p>
+      <p>One pattern worth building: a shadow mode. Before committing to the cheaper model in production, run both models on the same documents for two weeks and compare outputs. I've seen cases where a model that looks cheaper on paper performs badly on a specific document format and forces expensive retries that wipe out the savings.</p>
+    </div>
+
+    <div class="code-block">
+      <div class="cb-label">Python — OCR-confidence-based model router</div>
+      <pre><span class="tok-key">from</span> dataclasses <span class="tok-key">import</span> dataclass
+<span class="tok-key">from</span> enum <span class="tok-key">import</span> Enum
+
+<span class="tok-key">class</span> Tier(Enum):
+    CHEAP    = <span class="tok-str">"cheap"</span>
+    FRONTIER = <span class="tok-str">"frontier"</span>
+
+MODEL_MAP = {
+    <span class="tok-str">"openai"</span>:    {Tier.CHEAP: <span class="tok-str">"gpt-4o-mini"</span>,                Tier.FRONTIER: <span class="tok-str">"gpt-4o"</span>},
+    <span class="tok-str">"anthropic"</span>: {Tier.CHEAP: <span class="tok-str">"claude-haiku-4-5-20251001"</span>,  Tier.FRONTIER: <span class="tok-str">"claude-sonnet-4-20250514"</span>},
+    <span class="tok-str">"google"</span>:    {Tier.CHEAP: <span class="tok-str">"gemini-2.5-flash"</span>,           Tier.FRONTIER: <span class="tok-str">"gemini-2.5-pro"</span>},
+}
+
+<span class="tok-key">def</span> select_model(provider: str, ocr_confidence: float, threshold: float = <span class="tok-val">0.85</span>) -> str:
+    tier = Tier.CHEAP <span class="tok-key">if</span> ocr_confidence >= threshold <span class="tok-key">else</span> Tier.FRONTIER
+    model = MODEL_MAP[provider][tier]
+    <span class="tok-key">return</span> model
+
+<span class="tok-cmt"># Usage</span>
+model = select_model(<span class="tok-str">"anthropic"</span>, ocr_confidence=<span class="tok-val">0.91</span>)
+<span class="tok-cmt"># → "claude-haiku-4-5-20251001"</span>
+
+model = select_model(<span class="tok-str">"anthropic"</span>, ocr_confidence=<span class="tok-val">0.62</span>)
+<span class="tok-cmt"># → "claude-sonnet-4-20250514"</span></pre>
+    </div>
+  </div>
+
+  <div class="section" id="prompt-compression">
+    <div class="section-label">05 — Prompt Engineering</div>
+    <h2><a class="anchor" href="#prompt-compression">Prompt Compression: Paying for What You Need</a></h2>
+    <div class="prose">
+      <p>Most LLM prompts I've seen in production are verbose in ways that add no extraction value. They're written the way people write requirements documents — with hedges, explanations, and repetition. Every one of those tokens costs money and, past a point, degrades output quality by diluting the instruction signal.</p>
+      <p>I audited our extraction prompts when this cost work started. The original system prompt was 1,847 tokens. After removing explanation paragraphs that described what IDP is (the model knows), removing redundant field descriptions already covered by the schema, and restructuring the output instructions to be command-form rather than narrative, the prompt dropped to 612 tokens. Extraction accuracy on our benchmark: identical.</p>
+    </div>
+
+    <div class="cards-grid">
+      <div class="card card-red">
+        <div class="card-icon-badge">Before</div>
+        <h4>Narrative prompt</h4>
+        <p>1,847 tokens. Explains context the model doesn't need. Redundant field descriptions. Output format described in paragraph form.</p>
+      </div>
+      <div class="card card-green">
+        <div class="card-icon-badge">After</div>
+        <h4>Structured prompt</h4>
+        <p>612 tokens. Command-form instructions only. Fields defined once in the schema. Output format specified as a JSON example, not prose.</p>
+      </div>
+    </div>
+
+    <div class="code-block">
+      <div class="cb-label">Prompt — before vs after</div>
+      <pre><span class="tok-cmt"># BEFORE: verbose, 1847 tokens</span>
+<span class="tok-str">"""
+You are an intelligent document processing assistant specialized in
+extracting structured information from insurance documents. Your role
+is to carefully analyze the provided OCR text from insurance forms
+and extract relevant information according to the schema provided.
+
+When extracting information, please ensure you:
+1. Read the entire document carefully before making any extractions
+2. Pay attention to field labels and their corresponding values
+3. Handle missing fields by returning null values
+4. Ensure all dates are formatted as YYYY-MM-DD
+...
+(continues for 40 more lines)
+"""</span>
+
+<span class="tok-cmt"># AFTER: command-form, 612 tokens</span>
+<span class="tok-str">"""
+Extract structured data from insurance OCR text per the schema below.
+
+Rules:
+- Missing fields → null (never omit)
+- Dates → YYYY-MM-DD
+- Amounts → numeric, no currency symbols
+- Confidence < 0.7 on any field → set field_confidence: "low"
+
+Output: valid JSON matching the schema exactly. No prose.
+"""</span></pre>
+    </div>
+
+    <div class="prose">
+      <p>Two specific patterns worth knowing. First: move your output schema to a separate cache block rather than embedding it inline in the system prompt. The schema changes rarely; the instructions might change more often. Splitting them into two cacheable blocks means a schema update doesn't invalidate your instruction cache. Second: use JSON mode or structured outputs wherever the provider supports it. The output becomes more deterministic, and you eliminate the token overhead of the model wrapping its JSON in markdown code fences.</p>
+    </div>
+
+    <div class="code-block">
+      <div class="cb-label">Python — OpenAI structured outputs</div>
+      <pre><span class="tok-key">from</span> pydantic <span class="tok-key">import</span> BaseModel
+<span class="tok-key">from</span> typing <span class="tok-key">import</span> Optional
+<span class="tok-key">import</span> openai
+
+<span class="tok-key">class</span> InsuranceExtraction(BaseModel):
+    policy_number:   str
+    insured_name:    str
+    effective_date:  str             <span class="tok-cmt"># YYYY-MM-DD</span>
+    premium_amount:  float
+    coverage_type:   str
+    claim_number:    Optional[str]   <span class="tok-cmt"># null if not a claim form</span>
+
+client = openai.OpenAI()
+
+response = client.beta.chat.completions.parse(
+    model=<span class="tok-str">"gpt-4o-mini"</span>,
+    messages=[
+        {<span class="tok-str">"role"</span>: <span class="tok-str">"system"</span>, <span class="tok-str">"content"</span>: SYSTEM_PROMPT},
+        {<span class="tok-str">"role"</span>: <span class="tok-str">"user"</span>,   <span class="tok-str">"content"</span>: ocr_text}
+    ],
+    response_format=InsuranceExtraction,  <span class="tok-cmt"># no JSON parsing, no markdown fences</span>
+)
+
+extraction = response.choices[<span class="tok-val">0</span>].message.parsed
+<span class="tok-cmt"># → InsuranceExtraction object, validated by Pydantic</span></pre>
+    </div>
+  </div>
+
+  <div class="section" id="the-config">
+    <div class="section-label">06 — The Config Layer</div>
+    <h2><a class="anchor" href="#the-config">The Config Layer That Makes It Maintainable</a></h2>
+    <div class="prose">
+      <p>Three separate optimization levers — caching, routing, prompt compression — become a maintenance problem if each one is hardcoded. A config layer is what makes the whole system observable and adjustable without deploys.</p>
+      <p>The LLM orchestrator reads provider config at startup, selects the model based on the routing rules, builds the cacheable prompt blocks, and emits cost metrics to Grafana. When we wanted to benchmark Gemini 2.5 Flash versus GPT-4o-mini on the cheap tier, the comparison was a config change and a 24-hour traffic split — no code change, no deployment.</p>
+    </div>
+
+    <div class="code-block">
+      <div class="cb-label">Python — LLM orchestrator with cost tracking</div>
+      <pre><span class="tok-key">import</span> time
+<span class="tok-key">from</span> dataclasses <span class="tok-key">import</span> dataclass, field
+<span class="tok-key">from</span> typing <span class="tok-key">import</span> Dict, Any
+
+<span class="tok-key">@dataclass</span>
+<span class="tok-key">class</span> ExtractionResult:
+    data:              Dict[str, Any]
+    model_used:        str
+    provider:          str
+    input_tokens:      int
+    output_tokens:     int
+    cache_hit_tokens:  int
+    latency_ms:        float
+    estimated_cost:    float           <span class="tok-cmt"># USD</span>
+
+<span class="tok-key">class</span> LLMOrchestrator:
+    COST_PER_M = {
+        <span class="tok-str">"gpt-4o-mini"</span>:               {<span class="tok-str">"in"</span>: <span class="tok-val">0.15</span>,  <span class="tok-str">"out"</span>: <span class="tok-val">0.60</span>},
+        <span class="tok-str">"gpt-4o"</span>:                     {<span class="tok-str">"in"</span>: <span class="tok-val">2.50</span>,  <span class="tok-str">"out"</span>: <span class="tok-val">10.00</span>},
+        <span class="tok-str">"claude-haiku-4-5-20251001"</span>:  {<span class="tok-str">"in"</span>: <span class="tok-val">0.80</span>,  <span class="tok-str">"out"</span>: <span class="tok-val">4.00</span>},
+        <span class="tok-str">"claude-sonnet-4-20250514"</span>:   {<span class="tok-str">"in"</span>: <span class="tok-val">3.00</span>,  <span class="tok-str">"out"</span>: <span class="tok-val">15.00</span>},
+        <span class="tok-str">"gemini-2.5-flash"</span>:           {<span class="tok-str">"in"</span>: <span class="tok-val">0.15</span>,  <span class="tok-str">"out"</span>: <span class="tok-val">0.60</span>},
+        <span class="tok-str">"gemini-2.5-pro"</span>:             {<span class="tok-str">"in"</span>: <span class="tok-val">1.25</span>,  <span class="tok-str">"out"</span>: <span class="tok-val">10.00</span>},
+    }
+
+    <span class="tok-key">def</span> __init__(self, config: dict):
+        self.config   = config
+        self.provider = config[<span class="tok-str">"llm"</span>][<span class="tok-str">"default_provider"</span>]
+
+    <span class="tok-key">def</span> extract(self, ocr_text: str, ocr_confidence: float) -> ExtractionResult:
+        model = select_model(self.provider, ocr_confidence,
+                             self.config[<span class="tok-str">"llm"</span>][<span class="tok-str">"routing"</span>][<span class="tok-str">"confidence_threshold"</span>])
+        t0       = time.time()
+        response = self._call(model, ocr_text)       <span class="tok-cmt"># provider-specific call</span>
+        latency  = (time.time() - t0) * <span class="tok-val">1000</span>
+
+        cost = self._estimate_cost(model, response.usage)
+        self._emit_metrics(model, cost, latency)     <span class="tok-cmt"># → Grafana</span>
+
+        <span class="tok-key">return</span> ExtractionResult(
+            data=response.parsed,
+            model_used=model,
+            provider=self.provider,
+            input_tokens=response.usage.input_tokens,
+            output_tokens=response.usage.output_tokens,
+            cache_hit_tokens=getattr(response.usage, <span class="tok-str">"cache_read_input_tokens"</span>, <span class="tok-val">0</span>),
+            latency_ms=latency,
+            estimated_cost=cost,
+        )
+
+    <span class="tok-key">def</span> _estimate_cost(self, model: str, usage) -> float:
+        rates = self.COST_PER_M.get(model, {<span class="tok-str">"in"</span>: <span class="tok-val">0</span>, <span class="tok-str">"out"</span>: <span class="tok-val">0</span>})
+        cache_hit   = getattr(usage, <span class="tok-str">"cache_read_input_tokens"</span>, <span class="tok-val">0</span>)
+        normal_in   = usage.input_tokens - cache_hit
+        <span class="tok-key">return</span> (normal_in * rates[<span class="tok-str">"in"</span>] + cache_hit * rates[<span class="tok-str">"in"</span>] * <span class="tok-val">0.1</span>
+                + usage.output_tokens * rates[<span class="tok-str">"out"</span>]) / <span class="tok-val">1_000_000</span></pre>
+    </div>
+  </div>
+
+  <div class="section" id="results">
+    <div class="section-label">07 — Results</div>
+    <h2><a class="anchor" href="#results">What the Numbers Looked Like</a></h2>
+    <div class="prose">
+      <p>After running all three optimizations in production for 60 days, here's what changed. The numbers are internal and the baseline is the per-document blended cost before the work started.</p>
+    </div>
+
+    <div class="data-table">
+      <table class="fixed">
+        <colgroup>
+          <col style="width:36%">
+          <col style="width:22%">
+          <col style="width:22%">
+          <col style="width:20%">
+        </colgroup>
+        <thead>
+          <tr>
+            <th>Optimization</th>
+            <th class="num">Before</th>
+            <th class="num">After</th>
+            <th class="num">Reduction</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Prompt caching (system + schema)</td>
+            <td class="num">$0.018/doc</td>
+            <td class="num">$0.011/doc</td>
+            <td class="num td-yes">~39%</td>
+          </tr>
+          <tr>
+            <td>Model routing (cheap/frontier split)</td>
+            <td class="num">$0.011/doc</td>
+            <td class="num">$0.0075/doc</td>
+            <td class="num td-yes">~32%</td>
+          </tr>
+          <tr>
+            <td>Prompt compression (1847 → 612 tokens)</td>
+            <td class="num">$0.0075/doc</td>
+            <td class="num">$0.0064/doc</td>
+            <td class="num td-yes">~15%</td>
+          </tr>
+          <tr>
+            <td><strong>Combined (50k docs/month)</strong></td>
+            <td class="num"><strong>$900/mo</strong></td>
+            <td class="num"><strong>$320/mo</strong></td>
+            <td class="num td-yes"><strong>~64%</strong></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="prose">
+      <p>Extraction accuracy on the production benchmark set (1,200 manually labeled documents): before the work, 97.2%. After: 96.9%. The 0.3% regression is within noise on that sample size and attributable to the cheap-tier model on edge cases at the 0.85 threshold boundary — not to the prompt compression or caching changes. Raising the threshold to 0.87 recovered it entirely at the cost of routing 4% more volume to the frontier tier.</p>
+    </div>
+  </div>
+
+  <div class="section" id="breaks">
+    <div class="section-label">08 — Failure Modes</div>
+    <h2><a class="anchor" href="#breaks">Where This Breaks</a></h2>
+    <div class="prose">
+      <p>None of this is universal. Three scenarios where I've seen these optimizations either fail or not apply.</p>
+    </div>
+
+    <ul class="dl">
+      <li><strong>Low-volume or bursty pipelines.</strong> Prompt caching needs sustained throughput to amortize the cache write cost. If your pipeline processes 200 documents a day spread unevenly, you're paying the 125% write price more often than you're hitting the 10% cache price. Below roughly 2,000 requests per hour for a given prompt, caching is often a wash.</li>
+      <li><strong>Highly variable document types.</strong> The 0.85 OCR confidence threshold works for a specific document corpus. A corpus with significant format variation — handwritten claims, multi-language forms, photographs of paper documents — will have a different accuracy curve at that threshold. The routing split needs to be calibrated per corpus, not set once.</li>
+      <li><strong>Tasks where output length dominates cost.</strong> All three of these optimizations reduce input token cost. If your use case produces long outputs (summarization, report generation, free-form analysis), output tokens will dominate your bill and none of this moves the number meaningfully. For output-heavy workloads, the main levers are model selection and output length constraints, not prompt caching.</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-lbl">On accuracy regressions</div>
+      <p>Run a shadow mode before committing to the cheaper tier in production. Two weeks of parallel inference on a sampled subset, comparing outputs, before you flip the routing switch. The cost is negligible compared to a production accuracy regression on a live enterprise client.</p>
+    </div>
+  </div>
+
+  <div class="section" id="frame">
+    <div class="section-label">09 — Takeaway</div>
+    <h2><a class="anchor" href="#frame">The Frame to Leave On</a></h2>
+    <div class="prose">
+      <p>LLM cost is not a fixed property of a use case. It's an artifact of how you've wired the request. Most production systems I've seen send the same model, the same verbose prompt, and the same static context on every call, regardless of document difficulty. That's a routing and caching problem, not a model problem.</p>
+      <p>The three levers — caching, routing, compression — compound. Each one assumes a baseline that the previous one improved. Apply them in order: caching first (biggest bang, no accuracy risk), routing second (significant savings, requires calibration), compression last (smaller gains, but permanently reduces your cost floor). Don't compress prompts before you've confirmed caching is working; the interaction between cache invalidation and prompt changes is a source of subtle bugs.</p>
+      <p>The config layer is not optional. Without it, every optimization is a one-time migration. With it, cost optimization is a runtime knob.</p>
+    </div>
+  </div>
+
+</div>
+
+<footer>
+  <span>krishanavatar.github.io · July 2026</span>
+  <div class="footer-refs">
+    <a href="/">← back to index</a>
+  </div>
+</footer>
+
+<script>
+  (function () {
+    var btn = document.getElementById('theme-toggle');
+    if (!btn) return;
+    btn.addEventListener('click', function () {
+      var cur = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+      var next = cur === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', next);
+      try { localStorage.setItem('theme', next); } catch (e) {}
+    });
+  })();
+</script>
+
+</body>
+</html>
