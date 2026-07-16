@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Why RAG Pipelines Fail in Production</title>
+<script>
+  (function () {
+    try {
+      var saved = localStorage.getItem('theme');
+      var theme = saved || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+      document.documentElement.setAttribute('data-theme', theme);
+    } catch (e) {}
+  })();
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;0,6..72,500;0,6..72,600;0,6..72,700;1,6..72,300;1,6..72,400&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:           #F5F1EB;
+    --bg-alt:       #EDEAE3;
+    --surface:      #FFFFFF;
+    --surface-tint: #FAF8F5;
+    --border:       #DDD9D0;
+    --border-light: #EAE7E0;
+    --text:         #1A1714;
+    --text-body:    #3D3A35;
+    --text-muted:   #6B6760;
+    --text-subtle:  #9B9892;
+    --accent:       #C85C2D;
+    --accent-light: #E8895D;
+    --accent-bg:    #FDF1EB;
+    --accent-border:#F0C4A8;
+    --green:        #2A7A4B;
+    --green-bg:     #EAF5EF;
+    --green-border: #A8D9BC;
+    --blue:         #2563A8;
+    --blue-bg:      #EAF1FA;
+    --blue-border:  #A8C5E8;
+    --red:          #B83535;
+    --red-bg:       #FAEBEB;
+    --red-border:   #E8AAAA;
+    --code-bg:      #1A1714;
+    --shadow:       rgba(200,92,45,0.08);
+    --serif:        'Newsreader', Georgia, serif;
+    --sans:         'Inter', system-ui, sans-serif;
+    --mono:         'JetBrains Mono', 'Courier New', monospace;
+    color-scheme: light;
+  }
+  [data-theme="dark"] {
+    --bg:           #14110D;
+    --bg-alt:       #1E1A14;
+    --surface:      #1A1611;
+    --surface-tint: #211C16;
+    --border:       #332C24;
+    --border-light: #2A241D;
+    --text:         #F2EEE7;
+    --text-body:    #D8D2C8;
+    --text-muted:   #A39C90;
+    --text-subtle:  #7A7468;
+    --accent:       #E8895D;
+    --accent-light: #F0A079;
+    --accent-bg:    #2C1E14;
+    --accent-border:#5A3826;
+    --green:        #5FD699;
+    --green-bg:     #14241B;
+    --green-border: #2E5640;
+    --blue:         #6FB0F0;
+    --blue-bg:      #142233;
+    --blue-border:  #2C4A6E;
+    --red:          #F08585;
+    --red-bg:       #2E1717;
+    --red-border:   #663434;
+    --code-bg:      #0E0B08;
+    --shadow:       rgba(0,0,0,0.45);
+    color-scheme: dark;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg);
+    color: var(--text-body);
+    font-family: var(--sans);
+    font-size: 17px;
+    line-height: 1.75;
+    font-weight: 400;
+  }
+  nav {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 0 48px;
+    height: 52px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .nav-brand { font-family: var(--sans); font-size: 13px; font-weight: 600; color: var(--text); letter-spacing: 0.01em; text-decoration: none; }
+  .nav-right { display: flex; align-items: center; gap: 20px; font-size: 13px; color: var(--text-muted); }
+  .nav-tag { background: var(--accent); color: #fff; font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 3px; letter-spacing: 0.04em; }
+  .theme-toggle { background: none; border: 1px solid var(--border); border-radius: 6px; width: 30px; height: 30px; flex-shrink: 0; cursor: pointer; color: var(--text-muted); font-size: 14px; line-height: 1; display: inline-flex; align-items: center; justify-content: center; transition: color 0.15s, border-color 0.15s; }
+  .theme-toggle:hover { color: var(--accent); border-color: var(--accent-border); }
+  .theme-icon-sun { display: none; }
+  [data-theme="dark"] .theme-icon-sun  { display: inline; }
+  [data-theme="dark"] .theme-icon-moon { display: none; }
+  .page-wrap { max-width: 760px; margin: 0 auto; padding: 0 24px 80px; }
+  .hero { padding: 64px 0 48px; border-bottom: 1px solid var(--border); margin-bottom: 48px; }
+  .hero-eyebrow { font-family: var(--sans); font-size: 12px; font-weight: 600; color: var(--accent); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 16px; }
+  .hero h1 { font-family: var(--serif); font-size: clamp(34px, 5vw, 52px); font-weight: 600; line-height: 1.1; letter-spacing: -0.02em; color: var(--text); margin-bottom: 20px; }
+  .hero-deck { font-size: 18px; line-height: 1.65; color: var(--text-muted); max-width: 640px; font-weight: 300; }
+  .hero-meta { margin-top: 24px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12px; color: var(--text-subtle); font-family: var(--mono); }
+  .hero-meta-sep { color: var(--border); }
+  .prose p { color: var(--text-body); margin-bottom: 20px; font-size: 17px; line-height: 1.78; }
+  .prose p:last-child { margin-bottom: 0; }
+  strong { color: var(--text); font-weight: 600; }
+  em { font-style: italic; color: var(--text-body); }
+  .section { margin-top: 56px; scroll-margin-top: 72px; }
+  .section-label { font-family: var(--sans); font-size: 11px; font-weight: 600; color: var(--accent); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 8px; }
+  .section h2 { font-family: var(--serif); font-size: 28px; font-weight: 600; line-height: 1.2; letter-spacing: -0.01em; color: var(--text); margin-bottom: 24px; }
+  .section h2 a.anchor { color: inherit; text-decoration: none; position: relative; }
+  .section h2 a.anchor:hover::before { content: '#'; position: absolute; left: -22px; color: var(--accent); font-weight: 400; }
+  h3 { font-family: var(--serif); font-size: 20px; font-weight: 600; color: var(--text); margin: 32px 0 14px; letter-spacing: -0.01em; }
+  .banner { background: var(--accent-bg); border: 1px solid var(--accent-border); border-left: 3px solid var(--accent); border-radius: 6px; padding: 16px 20px; margin-bottom: 40px; display: flex; gap: 12px; align-items: flex-start; }
+  .banner-badge { background: var(--accent); color: #fff; font-family: var(--mono); font-size: 10px; font-weight: 500; padding: 2px 8px; border-radius: 3px; white-space: nowrap; flex-shrink: 0; margin-top: 2px; }
+  .banner p { font-size: 14px; color: var(--text-muted); line-height: 1.6; margin: 0; }
+  .plain-english { background: var(--surface); border: 1px solid var(--border); border-top: 3px solid var(--accent); border-radius: 0 0 8px 8px; padding: 28px 32px; margin: 0 0 56px; }
+  .plain-english .pe-label { font-family: var(--sans); font-size: 11px; font-weight: 700; color: var(--accent); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 16px; }
+  .pe-list { list-style: none; padding: 0; }
+  .pe-list li { display: flex; gap: 14px; align-items: flex-start; padding: 14px 0; border-bottom: 1px solid var(--border-light); font-size: 16px; color: var(--text-body); line-height: 1.6; }
+  .pe-list li:last-child { border-bottom: none; }
+  .pe-num { width: 26px; height: 26px; background: var(--accent); color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0; margin-top: 1px; font-family: var(--mono); }
+  .toc { background: var(--surface-tint); border: 1px solid var(--border); border-radius: 8px; padding: 20px 24px 22px; margin: 0 0 56px; }
+  .toc-label { font-family: var(--sans); font-size: 11px; font-weight: 700; color: var(--accent); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 14px; }
+  .toc-list { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px 28px; }
+  .toc-list li { display: flex; align-items: baseline; gap: 10px; font-size: 14px; line-height: 1.5; }
+  .toc-num { font-family: var(--mono); font-size: 11px; color: var(--text-subtle); flex-shrink: 0; width: 18px; }
+  .toc-list a { color: var(--text-body); text-decoration: none; border-bottom: 1px solid transparent; transition: color 0.15s, border-color 0.15s; }
+  .toc-list a:hover { color: var(--accent); border-bottom-color: var(--accent-border); }
+  .cards-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin: 24px 0; }
+  .cards-grid:has(> .card:nth-child(2):last-child), .cards-grid:has(> .card:nth-child(4):last-child), .cards-grid.cols-2 { grid-template-columns: repeat(2, 1fr); }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 20px 22px; transition: border-color 0.2s, box-shadow 0.2s; }
+  .card:hover { border-color: var(--accent-border); box-shadow: 0 2px 8px var(--shadow); }
+  .card h4 { font-family: var(--sans); font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 7px; }
+  .card p { font-size: 13px; color: var(--text-muted); line-height: 1.6; margin: 0; }
+  .card.card-red { border-color: var(--red-border); }
+  .card.card-red .card-icon-badge { display: inline-block; background: var(--red-bg); color: var(--red); font-size: 10px; font-weight: 700; letter-spacing: 0.06em; padding: 2px 7px; border-radius: 3px; margin-bottom: 10px; text-transform: uppercase; }
+  .card.card-green { border-color: var(--green-border); }
+  .card.card-green .card-icon-badge { display: inline-block; background: var(--green-bg); color: var(--green); font-size: 10px; font-weight: 700; letter-spacing: 0.06em; padding: 2px 7px; border-radius: 3px; margin-bottom: 10px; text-transform: uppercase; }
+  .card.card-blue { border-color: var(--blue-border); }
+  .card.card-blue .card-icon-badge { display: inline-block; background: var(--blue-bg); color: var(--blue); font-size: 10px; font-weight: 700; letter-spacing: 0.06em; padding: 2px 7px; border-radius: 3px; margin-bottom: 10px; text-transform: uppercase; }
+  .code-block { background: var(--code-bg); border-radius: 7px; overflow: hidden; margin: 20px 0; }
+  .code-block .cb-label { padding: 9px 16px; background: rgba(255,255,255,0.06); border-bottom: 1px solid rgba(255,255,255,0.08); font-family: var(--mono); font-size: 11px; color: #888; letter-spacing: 0.06em; text-transform: uppercase; display: flex; align-items: center; justify-content: space-between; }
+  .code-block pre { padding: 20px; font-family: var(--mono); font-size: 13.5px; line-height: 1.7; color: #e8e8e8; overflow-x: auto; white-space: pre; }
+  .code-block .tok-key  { color: #fdba74; }
+  .code-block .tok-val  { color: #86efac; }
+  .code-block .tok-cmt  { color: #6b7280; font-style: italic; }
+  .code-block .tok-str  { color: #93c5fd; }
+  .code-block .tok-acc  { color: #fde047; }
+  .callout { background: var(--accent-bg); border: 1px solid var(--accent-border); border-left: 3px solid var(--accent); border-radius: 0 6px 6px 0; padding: 18px 22px; margin: 24px 0; }
+  .callout .callout-lbl { font-size: 11px; font-weight: 700; color: var(--accent); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 6px; }
+  .callout p { font-size: 15px; color: var(--text-muted); margin: 0; line-height: 1.7; }
+  ul.dl { list-style: none; padding: 0; margin: 0 0 24px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--surface); }
+  ul.dl li { position: relative; padding: 13px 18px 13px 34px; font-size: 15px; color: var(--text-body); border-bottom: 1px solid var(--border-light); line-height: 1.65; }
+  ul.dl li:last-child { border-bottom: none; }
+  ul.dl li::before { content: '→'; position: absolute; left: 14px; top: 13px; color: var(--accent); font-size: 14px; }
+  .data-table { overflow-x: auto; margin: 24px 0; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+  .data-table table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  .data-table table.fixed { table-layout: fixed; }
+  .data-table thead th { padding: 11px 16px; text-align: left; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; background: var(--bg-alt); border-bottom: 1px solid var(--border); color: var(--text-muted); white-space: nowrap; vertical-align: bottom; }
+  .data-table tbody td { padding: 11px 16px; border-bottom: 1px solid var(--border-light); color: var(--text-body); vertical-align: top; line-height: 1.55; overflow-wrap: anywhere; }
+  .data-table tbody tr:last-child td { border-bottom: none; }
+  .data-table tbody tr:hover td { background: var(--surface-tint); }
+  .data-table tbody td:first-child { font-weight: 600; color: var(--text); }
+  .data-table th.center, .data-table td.center { text-align: center; }
+  .data-table th.num, .data-table td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .td-yes { color: var(--green); font-weight: 600; }
+  .td-no  { color: var(--red);   font-weight: 600; }
+  .td-mono { font-family: var(--mono); font-size: 12px; color: var(--accent); }
+  footer { background: var(--surface); border-top: 1px solid var(--border); padding: 20px 48px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; font-size: 13px; color: var(--text-muted); }
+  footer a { color: var(--accent); text-decoration: none; }
+  footer a:hover { text-decoration: underline; }
+  .footer-refs { font-size: 12px; color: var(--text-subtle); }
+  @media (max-width: 600px) {
+    nav { padding: 0 20px; }
+    .hero { padding: 40px 0 36px; }
+    .page-wrap { padding: 0 16px 60px; }
+    footer { padding: 16px 20px; }
+    .plain-english { padding: 20px; }
+    .toc-list { grid-template-columns: 1fr; }
+    .cards-grid, .cards-grid.cols-2, .cards-grid.cols-3 { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <a class="nav-brand" href="/">krishanavatar.github.io</a>
+  <div class="nav-right">
+    <span>AI / LLM Engineering</span>
+    <span class="nav-tag">JUL 2026</span>
+    <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle dark mode" title="Toggle dark mode">
+      <span class="theme-icon-moon" aria-hidden="true">&#9790;</span>
+      <span class="theme-icon-sun" aria-hidden="true">&#9728;</span>
+    </button>
+  </div>
+</nav>
+
+<div class="page-wrap">
+
+  <header class="hero">
+    <div class="hero-eyebrow">Production Engineering — Retrieval Systems</div>
+    <h1>Why RAG Pipelines Fail in Production</h1>
+    <p class="hero-deck">The gap between a working demo and a reliable production system is wider than most teams estimate. Here is where the breaks actually happen, and what to do about each one.</p>
+    <div class="hero-meta">
+      <span>krishanavatar.github.io</span>
+      <span class="hero-meta-sep">/</span>
+      <span>July 2026</span>
+      <span class="hero-meta-sep">/</span>
+      <span>10 min read</span>
+    </div>
+  </header>
+
+  <div class="banner">
+    <span class="banner-badge">THESIS</span>
+    <p>Most RAG failures are not retrieval failures. They are system design failures that happen to surface during retrieval — because that is the step nobody instruments.</p>
+  </div>
+
+  <div class="plain-english">
+    <div class="pe-label">The Four Failure Layers</div>
+    <ul class="pe-list">
+      <li>
+        <span class="pe-num">1</span>
+        <div><strong>Chunking</strong> — Fixed-size token splits violate semantic boundaries. The embedding model encodes fragments, not concepts. Retrieval degrades before a query is ever issued.</div>
+      </li>
+      <li>
+        <span class="pe-num">2</span>
+        <div><strong>Retrieval quality</strong> — Bi-encoder cosine similarity measures topic proximity, not answer relevance. Without a reranker pass, you retrieve the right neighborhood but the wrong house.</div>
+      </li>
+      <li>
+        <span class="pe-num">3</span>
+        <div><strong>Evaluation</strong> — End-to-end answer quality evals hide retrieval failures. A generator that improvises well can mask a recall@5 of 0.50 for weeks before it fails on the wrong query.</div>
+      </li>
+      <li>
+        <span class="pe-num">4</span>
+        <div><strong>Infrastructure</strong> — Embedding drift, index staleness, and context window sizing are operational problems, not algorithmic ones. Teams solve them too late.</div>
+      </li>
+    </ul>
+  </div>
+
+  <nav class="toc" aria-label="Jump to section">
+    <div class="toc-label">Jump to</div>
+    <ol class="toc-list">
+      <li><span class="toc-num">01</span><a href="#demo-gap">The Demo That Fooled Everyone</a></li>
+      <li><span class="toc-num">02</span><a href="#chunking">Chunking Is Not a Strategy</a></li>
+      <li><span class="toc-num">03</span><a href="#eval-gap">The Retrieval Eval Gap</a></li>
+      <li><span class="toc-num">04</span><a href="#context-poisoning">Context Window Poisoning</a></li>
+      <li><span class="toc-num">05</span><a href="#embedding-drift">Embedding Drift</a></li>
+      <li><span class="toc-num">06</span><a href="#reranker">Why You Need a Reranker</a></li>
+      <li><span class="toc-num">07</span><a href="#latency">The Latency Wall</a></li>
+      <li><span class="toc-num">08</span><a href="#when-it-works">When RAG Actually Works</a></li>
+      <li><span class="toc-num">09</span><a href="#frame">The Frame to Leave On</a></li>
+    </ol>
+  </nav>
+
+  <div class="section" id="demo-gap">
+    <div class="section-label">01 — The Setup</div>
+    <h2><a class="anchor" href="#demo-gap">The Demo That Fooled Everyone</a></h2>
+    <div class="prose">
+      <p>The demo works on 50 curated documents. The production system fails on 50,000 real ones. This is not a coincidence. It is a selection bias built into how most teams evaluate RAG before deploying it.</p>
+      <p>A typical proof-of-concept uses a small, clean corpus, asks questions whose answers exist verbatim in the documents, and tests with users who already know the right answer. The retrieval step returns the correct chunk because the corpus is small enough that almost anything retrieves correctly. The generator produces a good answer because the context it receives is always relevant.</p>
+      <p>Scale changes this. The same system with a 100x larger corpus, real user queries that do not phrase-match the documents, and content that only partially answers a question — that is where production happens. The demo did not test that scenario. The production system fails at it without warning.</p>
+      <p>I have seen this pattern at Infrrd on document intelligence pipelines three times in the last two years. Each time, the proof-of-concept benchmark looked strong. Each time, production performance degraded within weeks as query distribution shifted toward edge cases the demo corpus never contained.</p>
+    </div>
+  </div>
+
+  <div class="section" id="chunking">
+    <div class="section-label">02 — Chunking</div>
+    <h2><a class="anchor" href="#chunking">Chunking Is Not a Strategy</a></h2>
+    <div class="prose">
+      <p>Fixed-size chunking — every 512 tokens, every 1,024 tokens — is the default because it requires no decisions. That is also why it fails on anything more structured than a blog post.</p>
+      <p>The problem is semantic boundary violations. A 512-token chunk that starts mid-sentence, cuts a table in half, or separates a code block from its explanation passes structurally incoherent content to both the embedding model and the generator. The embedding captures a fragment, not a concept. The generator produces a hallucination or a non-answer because its context is incomplete.</p>
+      <p>On a 200-page insurance policy document chunked at fixed token boundaries, questions that span clause boundaries consistently miss. A definition in section 2 governs exclusions in section 14. Neither chunk retrieves on its own. Together they answer the question. Fixed chunking has no way to represent that relationship, so it never surfaces it.</p>
+      <p>The fix is document-aware segmentation: split on semantic boundaries — headings, paragraphs, list items, code blocks — not token counts. For structured documents, use the document's own structure as the split signal. For unstructured prose, sentence-boundary detection is the floor; paragraph-level segmentation is usually better.</p>
+      <p>One pattern that works well in practice: hierarchical chunking. Store chunks at two granularities — paragraph-level for retrieval, section-level for context expansion. Retrieve the paragraph, but pass the full parent section to the generator. This keeps retrieval precise while giving the generator enough context to reason across related content.</p>
+    </div>
+
+    <div class="code-block">
+      <div class="cb-label">Python — document-aware chunking with parent context</div>
+      <pre><span class="tok-key">from</span> dataclasses <span class="tok-key">import</span> dataclass, field
+<span class="tok-key">from</span> typing <span class="tok-key">import</span> List, Optional
+<span class="tok-key">import</span> re
+
+<span class="tok-key">@dataclass</span>
+<span class="tok-key">class</span> Chunk:
+    text:        str
+    chunk_id:    str
+    parent_id:   Optional[str]   <span class="tok-cmt"># section this chunk belongs to</span>
+    parent_text: Optional[str]   <span class="tok-cmt"># full section — passed to generator on retrieval hit</span>
+    metadata:    dict = field(default_factory=dict)
+
+<span class="tok-key">def</span> split_by_headings(document: str, doc_id: str) -> List[Chunk]:
+    <span class="tok-cmt"># Split on markdown-style headings; adapt regex for your format</span>
+    section_pattern = re.compile(<span class="tok-str">r'(?=^#{1,3}\s)'</span>, re.MULTILINE)
+    sections = section_pattern.split(document)
+    chunks = []
+
+    <span class="tok-key">for</span> s_idx, section <span class="tok-key">in</span> enumerate(sections):
+        section = section.strip()
+        <span class="tok-key">if not</span> section:
+            <span class="tok-key">continue</span>
+        section_id = <span class="tok-str">f"{doc_id}::s{s_idx}"</span>
+
+        <span class="tok-cmt"># Paragraph-level sub-chunks within the section</span>
+        paragraphs = [p.strip() <span class="tok-key">for</span> p <span class="tok-key">in</span> section.split(<span class="tok-str">'\n\n'</span>) <span class="tok-key">if</span> p.strip()]
+        <span class="tok-key">for</span> p_idx, para <span class="tok-key">in</span> enumerate(paragraphs):
+            <span class="tok-key">if</span> len(para) < <span class="tok-val">40</span>:   <span class="tok-cmt"># skip headings-only stubs</span>
+                <span class="tok-key">continue</span>
+            chunks.append(Chunk(
+                text=para,
+                chunk_id=<span class="tok-str">f"{section_id}::p{p_idx}"</span>,
+                parent_id=section_id,
+                parent_text=section,   <span class="tok-cmt"># full section for generator context</span>
+            ))
+    <span class="tok-key">return</span> chunks
+
+<span class="tok-cmt"># On retrieval hit: index chunk.text, but pass chunk.parent_text to the LLM</span></pre>
+    </div>
+
+    <div class="callout">
+      <div class="callout-lbl">Overlap is not the answer</div>
+      <p>Adding token overlap between chunks (e.g. 10% overlap) is a common workaround for boundary violations. It reduces the problem without solving it, and it inflates your index size by 10% with near-duplicate content. Use structural boundaries instead.</p>
+    </div>
+  </div>
+
+  <div class="section" id="eval-gap">
+    <div class="section-label">03 — Evaluation</div>
+    <h2><a class="anchor" href="#eval-gap">The Retrieval Eval Gap</a></h2>
+    <div class="prose">
+      <p>Most teams evaluate their RAG system at the output level: generate an answer, compare to a reference. This tells you whether the end-to-end pipeline is working. It does not tell you where it is failing.</p>
+      <p>The standard failure mode: a RAG eval shows 80% answer quality. Looks acceptable. But the retrieval step has a recall@5 of 0.52 — half the time, the correct document is not in the top 5 retrieved chunks. The generator is producing reasonable answers from the wrong context because it is a capable enough model to improvise. That improvisation masks the retrieval failure until you hit a query where the generator cannot fill the gap.</p>
+      <p>You need retrieval evals separate from generation evals. The metrics: <strong>recall@k</strong> (is the relevant document in the top k results?), <strong>precision@k</strong> (of the top k results, how many are relevant?), and <strong>mean reciprocal rank</strong> (how high is the first relevant result?). These require a labeled dataset — queries paired with their known-relevant documents. Building that dataset is the actual work most teams skip.</p>
+      <p>Without retrieval evals, you are navigating blind. An improvement to your chunking strategy might degrade recall@5 while improving the quality of hits when retrieval does work. You would see a flat or slightly improved end-to-end score and conclude the change was neutral. It was not.</p>
+    </div>
+
+    <div class="code-block">
+      <div class="cb-label">Python — retrieval eval metrics</div>
+      <pre><span class="tok-key">from</span> typing <span class="tok-key">import</span> List, Dict
+
+<span class="tok-key">def</span> recall_at_k(retrieved_ids: List[str], relevant_ids: List[str], k: int) -> float:
+    <span class="tok-str">"""Fraction of relevant docs found in top-k retrieved."""</span>
+    top_k = set(retrieved_ids[:k])
+    relevant = set(relevant_ids)
+    <span class="tok-key">if not</span> relevant:
+        <span class="tok-key">return</span> <span class="tok-val">0.0</span>
+    <span class="tok-key">return</span> len(top_k & relevant) / len(relevant)
+
+<span class="tok-key">def</span> precision_at_k(retrieved_ids: List[str], relevant_ids: List[str], k: int) -> float:
+    <span class="tok-str">"""Fraction of top-k that are relevant."""</span>
+    top_k = retrieved_ids[:k]
+    relevant = set(relevant_ids)
+    <span class="tok-key">return</span> sum(<span class="tok-val">1</span> <span class="tok-key">for</span> doc_id <span class="tok-key">in</span> top_k <span class="tok-key">if</span> doc_id <span class="tok-key">in</span> relevant) / k
+
+<span class="tok-key">def</span> mean_reciprocal_rank(retrieved_ids: List[str], relevant_ids: List[str]) -> float:
+    <span class="tok-str">"""Position of the first relevant result (1-indexed)."""</span>
+    relevant = set(relevant_ids)
+    <span class="tok-key">for</span> rank, doc_id <span class="tok-key">in</span> enumerate(retrieved_ids, <span class="tok-val">1</span>):
+        <span class="tok-key">if</span> doc_id <span class="tok-key">in</span> relevant:
+            <span class="tok-key">return</span> <span class="tok-val">1.0</span> / rank
+    <span class="tok-key">return</span> <span class="tok-val">0.0</span>
+
+<span class="tok-key">def</span> evaluate_retrieval(eval_set: List[Dict], retriever, k: int = <span class="tok-val">5</span>) -> Dict:
+    <span class="tok-str">"""
+    eval_set: [{"query": str, "relevant_ids": [str, ...]}]
+    retriever: callable(query) -> [chunk_id, ...]
+    """</span>
+    recalls, precisions, mrrs = [], [], []
+    <span class="tok-key">for</span> item <span class="tok-key">in</span> eval_set:
+        retrieved = retriever(item[<span class="tok-str">"query"</span>])
+        recalls.append(recall_at_k(retrieved, item[<span class="tok-str">"relevant_ids"</span>], k))
+        precisions.append(precision_at_k(retrieved, item[<span class="tok-str">"relevant_ids"</span>], k))
+        mrrs.append(mean_reciprocal_rank(retrieved, item[<span class="tok-str">"relevant_ids"</span>]))
+    <span class="tok-key">return</span> {
+        <span class="tok-str">f"recall@{k}"</span>:    sum(recalls)    / len(recalls),
+        <span class="tok-str">f"precision@{k}"</span>: sum(precisions) / len(precisions),
+        <span class="tok-str">"mrr"</span>:            sum(mrrs)       / len(mrrs),
+    }</pre>
+    </div>
+
+    <div class="callout">
+      <div class="callout-lbl">How many labeled queries do you need?</div>
+      <p>For a retrieval eval to be statistically meaningful, I use 200 queries as a working minimum on a corpus of 10k–100k documents. Fewer than 100 and variance dominates — a single configuration change can swing your metrics by noise. Building the labeled set is mostly a one-time cost; maintaining it as the corpus evolves is the ongoing work.</p>
+    </div>
+  </div>
+
+  <div class="section" id="context-poisoning">
+    <div class="section-label">04 — Context Assembly</div>
+    <h2><a class="anchor" href="#context-poisoning">Context Window Poisoning</a></h2>
+    <div class="prose">
+      <p>Retrieving the wrong chunks is bad. Retrieving too many loosely-relevant chunks is a different kind of bad, and it is harder to detect because the generator still produces an answer.</p>
+      <p>The standard RAG pattern passes k retrieved chunks as context. Set k=10 and you have ten chunks that ranked highest by cosine similarity. On a specific query, that might mean two highly relevant chunks, four loosely related chunks, and four thematically adjacent chunks that do not contain the answer. The generator processes all ten and either dilutes the right signal with noise, or synthesizes across the irrelevant chunks and produces a confident wrong answer.</p>
+      <p>I call this context window poisoning. The model is not hallucinating from lack of information. It is hallucinating from excess noisy information. The generator treats all context as signal. When the context is 60% noise, it reasons on noise.</p>
+      <p>One concrete diagnostic: test your system with k=3 versus k=10. If k=3 outperforms k=10 on your query set, context window poisoning is active. The additional retrieved chunks are hurting. The fix is a reranker, covered in the next section, and a smaller final context window than you are probably using.</p>
+    </div>
+
+    <div class="cards-grid cols-2">
+      <div class="card card-red">
+        <div class="card-icon-badge">Symptom</div>
+        <h4>Generator answers confidently but wrongly</h4>
+        <p>Especially on queries where the right answer is in the corpus but adjacent documents discuss related concepts. The model blends them.</p>
+      </div>
+      <div class="card card-green">
+        <div class="card-icon-badge">Fix</div>
+        <h4>Rerank, then pass top 3–5 only</h4>
+        <p>Retrieve k=20 with the bi-encoder, rerank to top 3–5 with a cross-encoder, pass only those to the generator. Short context, high precision.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="section" id="embedding-drift">
+    <div class="section-label">05 — Infrastructure</div>
+    <h2><a class="anchor" href="#embedding-drift">Embedding Drift and Index Staleness</a></h2>
+    <div class="prose">
+      <p>The embedding model and the vector index are two separate things that must stay in sync. Teams figure this out the hard way, usually six months after a migration.</p>
+      <p>Scenario: you build a RAG index using <code>text-embedding-ada-002</code>. You later migrate to <code>text-embedding-3-large</code> for better retrieval quality on new content. You use the new model for queries but the index still contains ada-002 embeddings. The cosine distances between query embeddings (new model space) and document embeddings (old model space) are now meaningless. Retrieval quality has silently collapsed. No error. No alert. Just bad answers.</p>
+      <p>The less dramatic version happens when you update your embedding model to a fine-tuned variant and re-embed only new documents. The index is now a hybrid of two embedding spaces. Queries retrieve inconsistently depending on which documents are relevant.</p>
+      <p>The operational rule: if you change the embedding model, rebuild the entire index. No partial migrations. This is expensive on large corpora, which is why teams skip it, which is why they pay in retrieval quality later.</p>
+      <p>Index staleness is a separate issue. Documents change. If your index is not updated when source documents are modified, retrieval returns stale content and the generator answers from outdated information. The fix is an update pipeline keyed on document modification time, not a periodic full re-index. Re-indexing only modified documents keeps the operational cost proportional to change volume, not corpus size.</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-lbl">Embedding model knowledge cutoffs</div>
+      <p>Embedding models have training cutoffs. If your corpus contains content that post-dates the embedding model's training data, vocabulary and concept representations may be poor for that content. Test this explicitly if you are indexing recent technical documentation — new framework names, API signatures, model identifiers. Observed symptom: retrieval quality degrades on recent content while performing well on older material.</p>
+    </div>
+  </div>
+
+  <div class="section" id="reranker">
+    <div class="section-label">06 — Retrieval Architecture</div>
+    <h2><a class="anchor" href="#reranker">Why You Need a Reranker</a></h2>
+    <div class="prose">
+      <p>A bi-encoder embedding model encodes query and document independently, then scores by cosine similarity. It is fast enough to search over millions of documents. It is also coarse: it captures topic similarity, not answer relevance.</p>
+      <p>A cross-encoder reranker processes the query and document together, producing a relevance score that accounts for their interaction. It cannot precompute document representations, so it runs 10–100x slower than the bi-encoder. But it answers a different question: not "does this document discuss the same topic as the query" but "does this document actually answer the query."</p>
+      <p>The standard production pattern: retrieve k=20 candidates with the bi-encoder, rerank with a cross-encoder, pass top 3–5 to the generator. Retrieval is fast and high-recall. Reranking is slower but high-precision. The generator gets a short, relevant context window.</p>
+      <p>On internal benchmarks with a 50k-document insurance corpus: bi-encoder alone produced recall@3 of 0.61. Cross-encoder reranking on top-20 candidates produced recall@3 of 0.84. Same underlying index, same bi-encoder retrieval step. The reranker added 23 percentage points of recall with no change to indexing.</p>
+    </div>
+
+    <div class="data-table">
+      <table class="fixed">
+        <colgroup>
+          <col style="width:22%">
+          <col style="width:22%">
+          <col style="width:18%">
+          <col style="width:18%">
+          <col style="width:20%">
+        </colgroup>
+        <thead>
+          <tr>
+            <th>Model</th>
+            <th>Type</th>
+            <th class="num">Latency</th>
+            <th>Hosting</th>
+            <th>Best for</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Cohere Rerank</td>
+            <td>Cross-encoder (API)</td>
+            <td class="num">50–150ms</td>
+            <td>API</td>
+            <td>Fast start, no infra</td>
+          </tr>
+          <tr>
+            <td>ms-marco-MiniLM-L-6</td>
+            <td>Cross-encoder</td>
+            <td class="num">80–200ms</td>
+            <td>Self-hosted</td>
+            <td>Low latency, open</td>
+          </tr>
+          <tr>
+            <td>BGE-reranker-large</td>
+            <td>Cross-encoder</td>
+            <td class="num">150–350ms</td>
+            <td>Self-hosted</td>
+            <td>Technical/dense text</td>
+          </tr>
+          <tr>
+            <td>Gemini 2.5 Flash (rerank prompt)</td>
+            <td>LLM-as-reranker</td>
+            <td class="num">400–800ms</td>
+            <td>API</td>
+            <td>Max precision, high latency</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="code-block">
+      <div class="cb-label">Python — bi-encoder retrieve + cross-encoder rerank pipeline</div>
+      <pre><span class="tok-key">from</span> sentence_transformers <span class="tok-key">import</span> CrossEncoder
+<span class="tok-key">from</span> typing <span class="tok-key">import</span> List
+
+<span class="tok-cmt"># Load once at startup — not per request</span>
+reranker = CrossEncoder(<span class="tok-str">"cross-encoder/ms-marco-MiniLM-L-6-v2"</span>)
+
+<span class="tok-key">def</span> retrieve_and_rerank(
+    query: str,
+    vector_store,           <span class="tok-cmt"># your Pinecone / Weaviate / pgvector client</span>
+    initial_k: int = <span class="tok-val">20</span>,
+    final_k:   int = <span class="tok-val">5</span>,
+) -> List[str]:
+    <span class="tok-cmt"># Stage 1: bi-encoder retrieval — fast, high-recall</span>
+    candidates = vector_store.query(query, top_k=initial_k)
+    <span class="tok-cmt"># candidates: [{"id": str, "text": str, "score": float}]</span>
+
+    <span class="tok-key">if not</span> candidates:
+        <span class="tok-key">return</span> []
+
+    <span class="tok-cmt"># Stage 2: cross-encoder reranking — slower, high-precision</span>
+    pairs = [(query, c[<span class="tok-str">"text"</span>]) <span class="tok-key">for</span> c <span class="tok-key">in</span> candidates]
+    scores = reranker.predict(pairs)
+
+    ranked = sorted(
+        zip(candidates, scores),
+        key=<span class="tok-key">lambda</span> x: x[<span class="tok-val">1</span>],
+        reverse=<span class="tok-val">True</span>
+    )
+
+    <span class="tok-cmt"># Return text of top final_k — this is what goes to the generator</span>
+    <span class="tok-key">return</span> [c[<span class="tok-str">"text"</span>] <span class="tok-key">for</span> c, _ <span class="tok-key">in</span> ranked[:final_k]]</pre>
+    </div>
+
+    <div class="callout">
+      <div class="callout-lbl">Do not skip the reranker to save latency</div>
+      <p>The reranker adds 100–300ms depending on model size and k. The recall regression from removing it is larger than the UX improvement from saving 300ms. Optimize the bi-encoder retrieval and generation streaming steps first. The reranker is the last thing to trade away.</p>
+    </div>
+  </div>
+
+  <div class="section" id="latency">
+    <div class="section-label">07 — Performance</div>
+    <h2><a class="anchor" href="#latency">The Latency Wall</a></h2>
+    <div class="prose">
+      <p>A production RAG pipeline at scale has a latency profile most teams do not model before they build it.</p>
+      <p>Bi-encoder retrieval from a well-optimized vector store (Pinecone, Weaviate, pgvector on a tuned instance): 20–80ms for k=20 over 1M documents. Cross-encoder reranking of 20 candidates: 100–300ms. Generator call (Claude Sonnet 4, streaming): 800–2,000ms to first token. Total before the user sees anything: 1–2.5 seconds.</p>
+      <p>That is acceptable for many applications and not for others. The places where it breaks: conversational interfaces that expect sub-second first-token latency, high-volume APIs where generator call queuing creates backpressure, and real-time search overlays.</p>
+    </div>
+
+    <ul class="dl">
+      <li><strong>Stream generation immediately.</strong> Do not wait for the full generator response before sending output. Streaming passes first-token latency perception to the user. It is free and every production RAG system should do it.</li>
+      <li><strong>Cache retrieval results for common queries.</strong> A query cache keyed on a normalized query hash, with a TTL of 5–15 minutes, eliminates retrieval and reranking latency for repeated queries. Effective for FAQ-style systems and search overlays. Less effective for conversational pipelines with high query diversity.</li>
+      <li><strong>Retrieval caching at the embedding level.</strong> If the same document is retrieved across many queries, the reranker inference is redundant. Cache (query_embedding, doc_id) to rerank score at the pair level. Useful for corpora where a small set of documents answers the majority of queries.</li>
+      <li><strong>Async pre-retrieval where possible.</strong> In conversational flows, pre-fetch likely relevant context based on early signals — topic, previous turns, detected intent — before the user submits the final query. The retrieval step can complete in the background while the user is still typing.</li>
+    </ul>
+  </div>
+
+  <div class="section" id="when-it-works">
+    <div class="section-label">08 — Applicability</div>
+    <h2><a class="anchor" href="#when-it-works">When RAG Actually Works</a></h2>
+    <div class="prose">
+      <p>RAG has a specific failure profile. It also has a specific success profile. Both are worth being precise about.</p>
+    </div>
+
+    <div class="data-table">
+      <table>
+        <thead>
+          <tr>
+            <th>Condition</th>
+            <th class="center">RAG fits</th>
+            <th>Why</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Corpus too large to fine-tune or changes frequently</td>
+            <td class="center td-yes">Yes</td>
+            <td>RAG updates with the corpus; fine-tuning requires retraining cycles</td>
+          </tr>
+          <tr>
+            <td>Answers exist verbatim or near-verbatim in source documents</td>
+            <td class="center td-yes">Yes</td>
+            <td>Retrieval finds them; generator extracts, not synthesizes</td>
+          </tr>
+          <tr>
+            <td>Queries are specific, factual, not reasoning-heavy</td>
+            <td class="center td-yes">Yes</td>
+            <td>Bi-encoder + reranker handles factual proximity well</td>
+          </tr>
+          <tr>
+            <td>Corpus fits in a long-context window (under ~200k tokens)</td>
+            <td class="center td-no">No</td>
+            <td>Full-context retrieval is simpler, cheaper, and more accurate</td>
+          </tr>
+          <tr>
+            <td>Task requires synthesis across many documents simultaneously</td>
+            <td class="center td-no">No</td>
+            <td>Retrieval selects a subset; synthesis requires the full picture</td>
+          </tr>
+          <tr>
+            <td>Multi-step reasoning where each step informs the next query</td>
+            <td class="center td-no">No</td>
+            <td>Agentic retrieval loops are needed; standard RAG is single-shot</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="prose">
+      <p>The specific case I see misused most often: internal knowledge base Q&amp;A on a 200-document corpus. Teams build a full RAG pipeline that would be more simply and more accurately handled by passing all 200 documents in a 200k-token context window and asking the question once. The RAG pipeline introduces retrieval risk on a dataset small enough to avoid it entirely. The complexity is not justified by the corpus size.</p>
+      <p>The threshold where RAG starts to pay off over full-context is roughly 500–1,000 documents for most embedding model and context window combinations, depending on average document length. Below that, reach for full context first and add retrieval only when you hit actual latency or cost constraints.</p>
+    </div>
+  </div>
+
+  <div class="section" id="frame">
+    <div class="section-label">09 — Takeaway</div>
+    <h2><a class="anchor" href="#frame">The Frame to Leave On</a></h2>
+    <div class="prose">
+      <p>Most RAG failures happen at the seams. Between the chunking strategy and the embedding model. Between the retrieval step and the generation step. Between the evaluation methodology and the actual failure modes. The components test fine individually. The system fails in production because the integration assumptions were wrong.</p>
+      <p>The sequence that works: build retrieval evals before you build a reranker. Build a reranker before you tune the generator. Diagnose where the pipeline is failing before you optimize anything. The failure is almost always in the retrieval layer, but teams optimize the generation layer because that is where the output is visible. You are measuring the wrong thing and fixing the wrong step.</p>
+      <p>The architecture is sound. The defaults ship broken.</p>
+    </div>
+  </div>
+
+</div>
+
+<footer>
+  <span>krishanavatar.github.io · July 2026</span>
+  <div class="footer-refs">
+    <a href="/">&#8592; back to index</a>
+  </div>
+</footer>
+
+<script>
+  (function () {
+    var btn = document.getElementById('theme-toggle');
+    if (!btn) return;
+    btn.addEventListener('click', function () {
+      var cur = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+      var next = cur === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', next);
+      try { localStorage.setItem('theme', next); } catch (e) {}
+    });
+  })();
+</script>
+
+</body>
+</html>
