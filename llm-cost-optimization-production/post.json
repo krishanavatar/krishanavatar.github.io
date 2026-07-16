@@ -1,0 +1,7 @@
+{
+  "title": "LLM Cost Optimization in Production",
+  "summary": "How I reduced inference spend by 64% using prompt caching (Anthropic + Vertex AI), model routing across GPT-4o / Gemini 2.5 / Claude 4, and prompt compression — without touching accuracy.",
+  "date": "2026-07-04",
+  "tag": "LLM Engineering",
+  "readingTime": "12 min"
+}
