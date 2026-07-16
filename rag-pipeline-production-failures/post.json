@@ -1,0 +1,7 @@
+{
+  "title": "Why RAG Pipelines Fail in Production",
+  "summary": "The gap between a working demo and a reliable production system is wider than most teams estimate. Where the breaks actually happen — chunking, retrieval eval, context poisoning, embedding drift — and what to do about each.",
+  "date": "2026-07-16",
+  "tag": "LLM Engineering",
+  "readingTime": "10 min"
+}
