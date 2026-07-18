@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LlamaIndex or the SDK: When to Use Each</title>
+<script>
+  (function () {
+    try {
+      var saved = localStorage.getItem('theme');
+      var theme = saved || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+      document.documentElement.setAttribute('data-theme', theme);
+    } catch (e) {}
+  })();
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;0,6..72,500;0,6..72,600;0,6..72,700;1,6..72,300;1,6..72,400&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:           #F5F1EB;
+    --bg-alt:       #EDEAE3;
+    --surface:      #FFFFFF;
+    --surface-tint: #FAF8F5;
+    --border:       #DDD9D0;
+    --border-light: #EAE7E0;
+    --text:         #1A1714;
+    --text-body:    #3D3A35;
+    --text-muted:   #6B6760;
+    --text-subtle:  #9B9892;
+    --accent:       #C85C2D;
+    --accent-light: #E8895D;
+    --accent-bg:    #FDF1EB;
+    --accent-border:#F0C4A8;
+    --green:        #2A7A4B;
+    --green-bg:     #EAF5EF;
+    --green-border: #A8D9BC;
+    --blue:         #2563A8;
+    --blue-bg:      #EAF1FA;
+    --blue-border:  #A8C5E8;
+    --red:          #B83535;
+    --red-bg:       #FAEBEB;
+    --red-border:   #E8AAAA;
+    --code-bg:      #1A1714;
+    --shadow:       rgba(200,92,45,0.08);
+    --serif:        'Newsreader', Georgia, serif;
+    --sans:         'Inter', system-ui, sans-serif;
+    --mono:         'JetBrains Mono', 'Courier New', monospace;
+    color-scheme: light;
+  }
+  [data-theme="dark"] {
+    --bg:           #14110D;
+    --bg-alt:       #1E1A14;
+    --surface:      #1A1611;
+    --surface-tint: #211C16;
+    --border:       #332C24;
+    --border-light: #2A241D;
+    --text:         #F2EEE7;
+    --text-body:    #D8D2C8;
+    --text-muted:   #A39C90;
+    --text-subtle:  #7A7468;
+    --accent:       #E8895D;
+    --accent-light: #F0A079;
+    --accent-bg:    #2C1E14;
+    --accent-border:#5A3826;
+    --green:        #5FD699;
+    --green-bg:     #14241B;
+    --green-border: #2E5640;
+    --blue:         #6FB0F0;
+    --blue-bg:      #142233;
+    --blue-border:  #2C4A6E;
+    --red:          #F08585;
+    --red-bg:       #2E1717;
+    --red-border:   #663434;
+    --code-bg:      #0E0B08;
+    --shadow:       rgba(0,0,0,0.45);
+    color-scheme: dark;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg);
+    color: var(--text-body);
+    font-family: var(--sans);
+    font-size: 17px;
+    line-height: 1.75;
+    font-weight: 400;
+  }
+  nav {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 0 48px;
+    height: 52px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .nav-brand { font-family: var(--sans); font-size: 13px; font-weight: 600; color: var(--text); letter-spacing: 0.01em; text-decoration: none; }
+  .nav-right { display: flex; align-items: center; gap: 20px; font-size: 13px; color: var(--text-muted); }
+  .nav-tag { background: var(--accent); color: #fff; font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 3px; letter-spacing: 0.04em; }
+  .theme-toggle { background: none; border: 1px solid var(--border); border-radius: 6px; width: 30px; height: 30px; flex-shrink: 0; cursor: pointer; color: var(--text-muted); font-size: 14px; line-height: 1; display: inline-flex; align-items: center; justify-content: center; transition: color 0.15s, border-color 0.15s; }
+  .theme-toggle:hover { color: var(--accent); border-color: var(--accent-border); }
+  .theme-icon-sun { display: none; }
+  [data-theme="dark"] .theme-icon-sun  { display: inline; }
+  [data-theme="dark"] .theme-icon-moon { display: none; }
+  .page-wrap { max-width: 760px; margin: 0 auto; padding: 0 24px 80px; }
+  .hero { padding: 64px 0 48px; border-bottom: 1px solid var(--border); margin-bottom: 48px; }
+  .hero-eyebrow { font-family: var(--sans); font-size: 12px; font-weight: 600; color: var(--accent); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 16px; }
+  .hero h1 { font-family: var(--serif); font-size: clamp(34px, 5vw, 52px); font-weight: 600; line-height: 1.1; letter-spacing: -0.02em; color: var(--text); margin-bottom: 20px; }
+  .hero-deck { font-size: 18px; line-height: 1.65; color: var(--text-muted); max-width: 640px; font-weight: 300; }
+  .hero-meta { margin-top: 24px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12px; color: var(--text-subtle); font-family: var(--mono); }
+  .hero-meta-sep { color: var(--border); }
+  .prose p { color: var(--text-body); margin-bottom: 20px; font-size: 17px; line-height: 1.78; }
+  .prose p:last-child { margin-bottom: 0; }
+  strong { color: var(--text); font-weight: 600; }
+  em { font-style: italic; color: var(--text-body); }
+  .section { margin-top: 56px; scroll-margin-top: 72px; }
+  .section-label { font-family: var(--sans); font-size: 11px; font-weight: 600; color: var(--accent); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 8px; }
+  .section h2 { font-family: var(--serif); font-size: 28px; font-weight: 600; line-height: 1.2; letter-spacing: -0.01em; color: var(--text); margin-bottom: 24px; }
+  .section h2 a.anchor { color: inherit; text-decoration: none; position: relative; }
+  .section h2 a.anchor:hover::before { content: '#'; position: absolute; left: -22px; color: var(--accent); font-weight: 400; }
+  h3 { font-family: var(--serif); font-size: 20px; font-weight: 600; color: var(--text); margin: 32px 0 14px; letter-spacing: -0.01em; }
+  .banner { background: var(--accent-bg); border: 1px solid var(--accent-border); border-left: 3px solid var(--accent); border-radius: 6px; padding: 16px 20px; margin-bottom: 40px; display: flex; gap: 12px; align-items: flex-start; }
+  .banner-badge { background: var(--accent); color: #fff; font-family: var(--mono); font-size: 10px; font-weight: 500; padding: 2px 8px; border-radius: 3px; white-space: nowrap; flex-shrink: 0; margin-top: 2px; }
+  .banner p { font-size: 14px; color: var(--text-muted); line-height: 1.6; margin: 0; }
+  .plain-english { background: var(--surface); border: 1px solid var(--border); border-top: 3px solid var(--accent); border-radius: 0 0 8px 8px; padding: 28px 32px; margin: 0 0 56px; }
+  .plain-english .pe-label { font-family: var(--sans); font-size: 11px; font-weight: 700; color: var(--accent); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 16px; }
+  .pe-list { list-style: none; padding: 0; }
+  .pe-list li { display: flex; gap: 14px; align-items: flex-start; padding: 14px 0; border-bottom: 1px solid var(--border-light); font-size: 16px; color: var(--text-body); line-height: 1.6; }
+  .pe-list li:last-child { border-bottom: none; }
+  .pe-num { width: 26px; height: 26px; background: var(--accent); color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0; margin-top: 1px; font-family: var(--mono); }
+  .toc { background: var(--surface-tint); border: 1px solid var(--border); border-radius: 8px; padding: 20px 24px 22px; margin: 0 0 56px; }
+  .toc-label { font-family: var(--sans); font-size: 11px; font-weight: 700; color: var(--accent); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 14px; }
+  .toc-list { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px 28px; }
+  .toc-list li { display: flex; align-items: baseline; gap: 10px; font-size: 14px; line-height: 1.5; }
+  .toc-num { font-family: var(--mono); font-size: 11px; color: var(--text-subtle); flex-shrink: 0; width: 18px; }
+  .toc-list a { color: var(--text-body); text-decoration: none; border-bottom: 1px solid transparent; transition: color 0.15s, border-color 0.15s; }
+  .toc-list a:hover { color: var(--accent); border-bottom-color: var(--accent-border); }
+  .cards-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin: 24px 0; }
+  .cards-grid:has(> .card:nth-child(2):last-child), .cards-grid:has(> .card:nth-child(4):last-child), .cards-grid.cols-2 { grid-template-columns: repeat(2, 1fr); }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 20px 22px; transition: border-color 0.2s, box-shadow 0.2s; }
+  .card:hover { border-color: var(--accent-border); box-shadow: 0 2px 8px var(--shadow); }
+  .card h4 { font-family: var(--sans); font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 7px; }
+  .card p { font-size: 13px; color: var(--text-muted); line-height: 1.6; margin: 0; }
+  .card.card-red { border-color: var(--red-border); }
+  .card.card-red .card-icon-badge { display: inline-block; background: var(--red-bg); color: var(--red); font-size: 10px; font-weight: 700; letter-spacing: 0.06em; padding: 2px 7px; border-radius: 3px; margin-bottom: 10px; text-transform: uppercase; }
+  .card.card-green { border-color: var(--green-border); }
+  .card.card-green .card-icon-badge { display: inline-block; background: var(--green-bg); color: var(--green); font-size: 10px; font-weight: 700; letter-spacing: 0.06em; padding: 2px 7px; border-radius: 3px; margin-bottom: 10px; text-transform: uppercase; }
+  .card.card-blue { border-color: var(--blue-border); }
+  .card.card-blue .card-icon-badge { display: inline-block; background: var(--blue-bg); color: var(--blue); font-size: 10px; font-weight: 700; letter-spacing: 0.06em; padding: 2px 7px; border-radius: 3px; margin-bottom: 10px; text-transform: uppercase; }
+  .code-block { background: var(--code-bg); border-radius: 7px; overflow: hidden; margin: 20px 0; }
+  .code-block .cb-label { padding: 9px 16px; background: rgba(255,255,255,0.06); border-bottom: 1px solid rgba(255,255,255,0.08); font-family: var(--mono); font-size: 11px; color: #888; letter-spacing: 0.06em; text-transform: uppercase; display: flex; align-items: center; justify-content: space-between; }
+  .code-block pre { padding: 20px; font-family: var(--mono); font-size: 13.5px; line-height: 1.7; color: #e8e8e8; overflow-x: auto; white-space: pre; }
+  .code-block .tok-key  { color: #fdba74; }
+  .code-block .tok-val  { color: #86efac; }
+  .code-block .tok-cmt  { color: #6b7280; font-style: italic; }
+  .code-block .tok-str  { color: #93c5fd; }
+  .code-block .tok-acc  { color: #fde047; }
+  .callout { background: var(--accent-bg); border: 1px solid var(--accent-border); border-left: 3px solid var(--accent); border-radius: 0 6px 6px 0; padding: 18px 22px; margin: 24px 0; }
+  .callout .callout-lbl { font-size: 11px; font-weight: 700; color: var(--accent); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 6px; }
+  .callout p { font-size: 15px; color: var(--text-muted); margin: 0; line-height: 1.7; }
+  ul.dl { list-style: none; padding: 0; margin: 0 0 24px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--surface); }
+  ul.dl li { position: relative; padding: 13px 18px 13px 34px; font-size: 15px; color: var(--text-body); border-bottom: 1px solid var(--border-light); line-height: 1.65; }
+  ul.dl li:last-child { border-bottom: none; }
+  ul.dl li::before { content: '→'; position: absolute; left: 14px; top: 13px; color: var(--accent); font-size: 14px; }
+  .data-table { overflow-x: auto; margin: 24px 0; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+  .data-table table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  .data-table table.fixed { table-layout: fixed; }
+  .data-table thead th { padding: 11px 16px; text-align: left; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; background: var(--bg-alt); border-bottom: 1px solid var(--border); color: var(--text-muted); white-space: nowrap; vertical-align: bottom; }
+  .data-table tbody td { padding: 11px 16px; border-bottom: 1px solid var(--border-light); color: var(--text-body); vertical-align: top; line-height: 1.55; overflow-wrap: anywhere; }
+  .data-table tbody tr:last-child td { border-bottom: none; }
+  .data-table tbody tr:hover td { background: var(--surface-tint); }
+  .data-table tbody td:first-child { font-weight: 600; color: var(--text); }
+  .data-table th.center, .data-table td.center { text-align: center; }
+  .data-table th.num, .data-table td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .td-yes { color: var(--green); font-weight: 600; }
+  .td-no  { color: var(--red);   font-weight: 600; }
+  .td-mid { color: var(--blue);  font-weight: 600; }
+  .td-mono { font-family: var(--mono); font-size: 12px; color: var(--accent); }
+  footer { background: var(--surface); border-top: 1px solid var(--border); padding: 20px 48px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; font-size: 13px; color: var(--text-muted); }
+  footer a { color: var(--accent); text-decoration: none; }
+  footer a:hover { text-decoration: underline; }
+  .footer-refs { font-size: 12px; color: var(--text-subtle); }
+  @media (max-width: 600px) {
+    nav { padding: 0 20px; }
+    .hero { padding: 40px 0 36px; }
+    .page-wrap { padding: 0 16px 60px; }
+    footer { padding: 16px 20px; }
+    .plain-english { padding: 20px; }
+    .toc-list { grid-template-columns: 1fr; }
+    .cards-grid, .cards-grid.cols-2, .cards-grid.cols-3 { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <a class="nav-brand" href="/">krishanavatar.github.io</a>
+  <div class="nav-right">
+    <span>AI / LLM Engineering</span>
+    <span class="nav-tag">JUL 2026</span>
+    <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle dark mode" title="Toggle dark mode">
+      <span class="theme-icon-moon" aria-hidden="true">&#9790;</span>
+      <span class="theme-icon-sun" aria-hidden="true">&#9728;</span>
+    </button>
+  </div>
+</nav>
+
+<div class="page-wrap">
+
+  <header class="hero">
+    <div class="hero-eyebrow">LLM Engineering — Framework Decisions</div>
+    <h1>LlamaIndex or the SDK: When to Use Each</h1>
+    <p class="hero-deck">The framework does real work. Whether that work matches the problem you have — and whether you will carry its overhead on every request regardless — is the question most teams skip before they start building.</p>
+    <div class="hero-meta">
+      <span>krishanavatar.github.io</span>
+      <span class="hero-meta-sep">/</span>
+      <span>July 2026</span>
+      <span class="hero-meta-sep">/</span>
+      <span>10 min read</span>
+    </div>
+  </header>
+
+  <div class="banner">
+    <span class="banner-badge">THESIS</span>
+    <p>LlamaIndex is not a smarter way to call an LLM. It is an orchestration framework for data pipelines that feed LLMs. If your problem is pipeline complexity, it pays off. If your problem is retrieval quality on a simple corpus, it introduces costs you do not need.</p>
+  </div>
+
+  <div class="plain-english">
+    <div class="pe-label">The Decision in Three Rules</div>
+    <ul class="pe-list">
+      <li>
+        <span class="pe-num">1</span>
+        <div><strong>One data source, one retrieval step</strong> — use the SDK directly. A complete RAG pipeline fits in 100 lines of Python. You control everything. The framework saves nothing here.</div>
+      </li>
+      <li>
+        <span class="pe-num">2</span>
+        <div><strong>Multiple data sources, routing across indexes, or agents</strong> — LlamaIndex pays off. Its connector library and query routing infrastructure save weeks on problems that would otherwise require custom scaffolding.</div>
+      </li>
+      <li>
+        <span class="pe-num">3</span>
+        <div><strong>You do not have to choose completely.</strong> LlamaIndex's data and indexing layers compose independently. Use the connectors for ingestion, then call the Anthropic SDK for generation. The framework owns the pipeline; you own the prompt.</div>
+      </li>
+    </ul>
+  </div>
+
+
+  <div class="section" id="wrong-question">
+    <div class="section-label">01 — The Setup</div>
+    <h2><a class="anchor" href="#wrong-question">The Wrong Question</a></h2>
+    <div class="prose">
+      <p>Most engineers approach this as a tool preference question: LlamaIndex or the raw API? That frames it wrong. The real question is: how complex is the data layer of the application I am building?</p>
+      <p>Simple data layer — one corpus, one embedding model, one retrieval step, one prompt — and the API client is all you need. A production-grade RAG pipeline for a single document store fits in 100–120 lines of Python using the Anthropic or OpenAI SDK directly. It has no hidden behavior, no framework overhead, and every step is something you wrote and can instrument.</p>
+      <p>Complex data layer — multiple source systems, document stores that update incrementally from several connectors, different query types that should route to different indexes, agents that invoke retrieval as one tool among several — and LlamaIndex is solving a problem that would otherwise require significant custom scaffolding. That is where the framework investment pays.</p>
+      <p>The confusion arises partly because LlamaIndex markets itself as a RAG library. It is also that, and it is a great deal more. Using it purely for a single-source RAG pipeline is paying the overhead of an orchestration framework to solve a retrieval problem that does not require orchestration.</p>
+    </div>
+  </div>
+
+  <div class="section" id="what-llamaindex-is">
+    <div class="section-label">02 — The Framework</div>
+    <h2><a class="anchor" href="#what-llamaindex-is">What LlamaIndex Actually Is</a></h2>
+    <div class="prose">
+      <p>LlamaIndex has four major layers. Understanding what each layer does — and which layer you actually need — is the starting point for any framework decision.</p>
+      <p><strong>Data connectors.</strong> LlamaIndex ships 150+ readers: Notion, Confluence, S3, PostgreSQL, GitHub, web crawlers, PDF parsers, Slack, Google Drive. Each handles its own auth flow, pagination, rate limiting, and document schema normalization. The output is a uniform list of <code>Document</code> objects regardless of source. Building the same breadth SDK-direct means implementing each loader from scratch.</p>
+      <p><strong>Indexing layer.</strong> <code>VectorStoreIndex</code> for semantic similarity, <code>SummaryIndex</code> for long-document compression, <code>KeywordTableIndex</code> for exact-term retrieval, <code>KnowledgeGraphIndex</code> for entity-relationship queries. Each index type has different retrieval characteristics and different costs. LlamaIndex provides a consistent interface across all of them.</p>
+      <p><strong>Query engines and routers.</strong> A <code>QueryEngine</code> wraps an index and handles the retrieval-to-generation pipeline. A <code>RouterQueryEngine</code> classifies the incoming query and dispatches it to the appropriate index. This routing layer is what separates LlamaIndex from a simple vector search wrapper. Query routing across heterogeneous indexes is the kind of infrastructure that takes weeks to build correctly without a framework.</p>
+      <p><strong>Agents.</strong> <code>ReActAgent</code> and <code>FunctionCallingAgent</code> expose query engines as callable tools in an agent loop. The agent decides when to invoke retrieval, what query to issue, and how to synthesize results across multiple tool calls. This is where LlamaIndex converges with the broader question of agentic architectures.</p>
+      <p>The layers compose independently. I can use the data connectors to ingest documents, build a vector index, retrieve nodes, and then pass those nodes to the Anthropic SDK for generation without touching LlamaIndex's query engine or response synthesizer. This composability is useful and frequently overlooked.</p>
+    </div>
+
+    <div class="cards-grid">
+      <div class="card card-blue">
+        <div class="card-icon-badge">Layer 1</div>
+        <h4>Data Connectors</h4>
+        <p>150+ readers for Notion, Confluence, S3, databases, GitHub, web. Handles auth, pagination, incremental updates.</p>
+      </div>
+      <div class="card card-blue">
+        <div class="card-icon-badge">Layer 2</div>
+        <h4>Index Types</h4>
+        <p>Vector, Summary, Keyword, Knowledge Graph. Each retrieves differently. One interface across all.</p>
+      </div>
+      <div class="card card-blue">
+        <div class="card-icon-badge">Layer 3</div>
+        <h4>Query Routing</h4>
+        <p>RouterQueryEngine dispatches across multiple indexes. Intent classification built in.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="section" id="what-sdk-means">
+    <div class="section-label">03 — The Alternative</div>
+    <h2><a class="anchor" href="#what-sdk-means">What SDK-Direct Means</a></h2>
+    <div class="prose">
+      <p>SDK-direct means using the Anthropic SDK, OpenAI SDK, or equivalent to call the model API without an orchestration layer. The SDK handles authentication, request construction, retries on transient errors, streaming, and token counting. Everything else — chunking, embedding, retrieval, prompt construction, context assembly — is code you write.</p>
+      <p>That sounds like more work. For a simple pipeline, it is not. The pipeline is explicit. A complete, production-ready single-source RAG implementation in the Anthropic SDK is straightforward to write, instrument, and debug.</p>
+    </div>
+
+    <div class="code-block">
+      <div class="cb-label">Python — complete SDK-direct RAG pipeline, single source</div>
+      <pre><span class="tok-key">import</span> anthropic
+<span class="tok-key">import</span> numpy <span class="tok-key">as</span> np
+<span class="tok-key">from</span> typing <span class="tok-key">import</span> List
+
+client = anthropic.Anthropic()
+
+<span class="tok-key">def</span> cosine_sim(a: np.ndarray, b: np.ndarray) -> float:
+    <span class="tok-key">return</span> float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b) + <span class="tok-val">1e-9</span>))
+
+<span class="tok-key">def</span> embed(texts: List[str], model: str = <span class="tok-str">"text-embedding-3-small"</span>) -> List[np.ndarray]:
+    <span class="tok-cmt"># swap for your embedding provider</span>
+    <span class="tok-key">import</span> openai
+    resp = openai.embeddings.create(input=texts, model=model)
+    <span class="tok-key">return</span> [np.array(r.embedding) <span class="tok-key">for</span> r <span class="tok-key">in</span> resp.data]
+
+<span class="tok-key">def</span> retrieve(query: str, chunks: List[str], chunk_embeddings: List[np.ndarray], k: int = <span class="tok-val">5</span>) -> List[str]:
+    [q_emb] = embed([query])
+    scores = [cosine_sim(q_emb, c_emb) <span class="tok-key">for</span> c_emb <span class="tok-key">in</span> chunk_embeddings]
+    top_k = sorted(range(len(scores)), key=<span class="tok-key">lambda</span> i: scores[i], reverse=<span class="tok-val">True</span>)[:k]
+    <span class="tok-key">return</span> [chunks[i] <span class="tok-key">for</span> i <span class="tok-key">in</span> top_k]
+
+<span class="tok-key">def</span> answer(query: str, chunks: List[str], chunk_embeddings: List[np.ndarray]) -> str:
+    context_chunks = retrieve(query, chunks, chunk_embeddings)
+    context = <span class="tok-str">"\n\n---\n\n"</span>.join(context_chunks)
+
+    response = client.messages.create(
+        model=<span class="tok-str">"claude-sonnet-4-5"</span>,
+        max_tokens=<span class="tok-val">1024</span>,
+        system=<span class="tok-str">"Answer using only the provided context. If the answer is not in the context, say so."</span>,
+        messages=[{<span class="tok-str">"role"</span>: <span class="tok-str">"user"</span>, <span class="tok-str">"content"</span>: <span class="tok-str">f"Context:\n{context}\n\nQuestion: {query}"</span>}]
+    )
+    <span class="tok-key">return</span> response.content[<span class="tok-val">0</span>].text
+
+<span class="tok-cmt"># Usage: load chunks at startup, pass pre-embedded list on each call</span>
+<span class="tok-cmt"># Every step is visible, loggable, and replaceable without framework negotiation</span></pre>
+    </div>
+
+    <div class="prose">
+      <p>This is not a toy implementation. It is the actual pipeline. Swap the embedding call for your vector store's native search, add a reranker pass between <code>retrieve</code> and <code>answer</code>, and this scales to millions of documents. The code is yours. When it fails, you know exactly where to look.</p>
+    </div>
+  </div>
+
+  <div class="section" id="abstraction-cost">
+    <div class="section-label">04 — The Trade-Off</div>
+    <h2><a class="anchor" href="#abstraction-cost">The Abstraction Cost</a></h2>
+    <div class="prose">
+      <p>Frameworks impose an abstraction tax. For LlamaIndex specifically, the tax has three components that compound in production.</p>
+      <p><strong>Hidden behavior.</strong> LlamaIndex constructs prompts internally. The default prompts for query engines, response synthesizers, and agents are documented but opaque at the call site. When a query engine produces an unexpected answer — truncated, mis-attributed, wrong tone — finding where the response synthesizer constructed its prompt takes investigation. SDK-direct pipelines have no such layer. The prompt you write is the prompt that runs.</p>
+      <p><strong>Version churn.</strong> LlamaIndex has undergone two major API surface changes in three years: from <code>gpt_index</code> to <code>llama_index</code> to the <code>llama_index.core</code> split across sub-packages. Class names, import paths, and parameter signatures changed between minor versions within each era. If your production system pins an older version, you fall behind on bug fixes. If you upgrade, you may break working code. The SDK client has a much more stable interface because it maps closely to the underlying HTTP API.</p>
+      <p><strong>Debugging distance.</strong> When a query engine returns a wrong answer, the failure could be in the node retriever, the node postprocessors, the response synthesizer, the underlying LLM call, or the prompt template. The framework owns the call stack. Adding observability requires callback hooks or an instrumentation layer. SDK-direct pipelines have no indirection. I add a <code>print</code> or a structured log exactly where I need it.</p>
+      <p>These costs are real but not disqualifying. They are worth paying when the framework is solving a problem that would otherwise require proportionally more custom work. The question is always: what problem is the framework solving, and is that the problem I have?</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-lbl">The Debugging Test</div>
+      <p>Before adopting a framework, ask: when this pipeline returns the wrong answer in production at 2am, how quickly can I find the fault? SDK-direct: add a log line, redeploy, done. LlamaIndex: configure a callback handler, trace through the node pipeline, inspect the synthesized prompt. Both are solvable. One is faster under pressure.</p>
+    </div>
+  </div>
+
+  <div class="section" id="llamaindex-wins">
+    <div class="section-label">05 — Where the Framework Pays</div>
+    <h2><a class="anchor" href="#llamaindex-wins">Where LlamaIndex Pays Off</a></h2>
+    <div class="prose">
+      <p>There are specific scenarios where LlamaIndex's cost is dwarfed by the problem it solves.</p>
+      <p><strong>Multi-source data ingestion.</strong> Notion for product specs, Confluence for engineering documentation, S3 for PDF contracts, a PostgreSQL table for structured records. Each source needs its own auth flow, pagination strategy, incremental update mechanism, and document normalization step. LlamaIndex's connector library covers all of these with maintained, tested implementations. Building the same capability SDK-direct means writing and maintaining four separate loaders. I have done this. On a project at Infrrd that needed five source systems, using the LlamaIndex connector ecosystem saved approximately three weeks of integration work.</p>
+      <p><strong>Routing across multiple indexes.</strong> A support system where policy questions should retrieve from the policy document index, procedural questions from the FAQ index, and pricing questions from a structured data table. Routing by query intent requires intent classification, index dispatch, and result synthesis. LlamaIndex's <code>RouterQueryEngine</code> with an <code>LLMSingleSelector</code> handles this in twelve lines. SDK-direct requires building the classification and dispatch layer from scratch, which is not complex but is work that the framework has already done correctly.</p>
+    </div>
+
+    <div class="code-block">
+      <div class="cb-label">Python — multi-source ingestion with LlamaIndex connectors</div>
+      <pre><span class="tok-key">from</span> llama_index.core <span class="tok-key">import</span> VectorStoreIndex
+<span class="tok-key">from</span> llama_index.readers.notion <span class="tok-key">import</span> NotionPageReader
+<span class="tok-key">from</span> llama_index.readers.confluence <span class="tok-key">import</span> ConfluenceReader
+<span class="tok-key">from</span> llama_index.readers.s3 <span class="tok-key">import</span> S3Reader
+
+<span class="tok-cmt"># Three sources, one index — this is where LlamaIndex earns its overhead</span>
+notion_docs = NotionPageReader(integration_token=NOTION_TOKEN).load_data(
+    page_ids=[<span class="tok-str">"page-id-1"</span>, <span class="tok-str">"page-id-2"</span>]
+)
+confluence_docs = ConfluenceReader(base_url=CONFLUENCE_URL, token=CONF_TOKEN).load_data(
+    space_key=<span class="tok-str">"ENG"</span>
+)
+s3_docs = S3Reader(bucket=<span class="tok-str">"my-contracts"</span>, prefix=<span class="tok-str">"active/"</span>).load_data()
+
+all_docs = notion_docs + confluence_docs + s3_docs
+index = VectorStoreIndex.from_documents(all_docs)
+
+<span class="tok-cmt"># Query across all three sources transparently</span>
+engine = index.as_query_engine()
+response = engine.query(<span class="tok-str">"What is the SLA for enterprise contracts?"</span>)</pre>
+    </div>
+
+    <div class="code-block">
+      <div class="cb-label">Python — router query engine across heterogeneous indexes</div>
+      <pre><span class="tok-key">from</span> llama_index.core.query_engine <span class="tok-key">import</span> RouterQueryEngine
+<span class="tok-key">from</span> llama_index.core.selectors <span class="tok-key">import</span> LLMSingleSelector
+<span class="tok-key">from</span> llama_index.core.tools <span class="tok-key">import</span> QueryEngineTool
+
+policy_tool = QueryEngineTool.from_defaults(
+    query_engine=policy_index.as_query_engine(),
+    description=<span class="tok-str">"Insurance policy terms, coverage limits, exclusion clauses"</span>
+)
+faq_tool = QueryEngineTool.from_defaults(
+    query_engine=faq_index.as_query_engine(),
+    description=<span class="tok-str">"General product questions, onboarding, account management"</span>
+)
+
+<span class="tok-cmt"># LLMSingleSelector classifies the query; RouterQueryEngine dispatches it</span>
+router = RouterQueryEngine(
+    selector=LLMSingleSelector.from_defaults(),
+    query_engine_tools=[policy_tool, faq_tool]
+)
+
+<span class="tok-cmt"># No manual intent classification — the router decides which index to hit</span>
+response = router.query(<span class="tok-str">"Does flood damage count as an exclusion under my policy?"</span>)</pre>
+    </div>
+
+    <div class="prose">
+      <p><strong>Agents with retrieval as a tool.</strong> When the application needs an agent that can both retrieve documents and call external APIs — a support agent that looks up policy language, checks a customer's account status, and drafts a response — LlamaIndex's agent framework composes retrieval tools with API tools cleanly. SDK-direct tool-use with the Anthropic SDK is also viable here, but LlamaIndex's integration between query engines and the agent tool abstraction reduces the wiring work.</p>
+      <p><strong>Evaluation and observability integrations.</strong> LlamaIndex ships built-in evaluators for faithfulness, relevance, and correctness, along with integrations to tracing backends like Arize Phoenix, LangFuse, and Weights &amp; Biases. If your team wants structured retrieval evals with minimal setup, this is faster than building an eval harness SDK-direct.</p>
+    </div>
+  </div>
+
+  <div class="section" id="sdk-wins">
+    <div class="section-label">06 — Where the SDK Wins</div>
+    <h2><a class="anchor" href="#sdk-wins">Where SDK-Direct Is the Right Call</a></h2>
+    <div class="prose">
+      <p>SDK-direct is the correct choice in four specific situations, and in each case the reason is different.</p>
+      <p><strong>Single-source, single-step pipelines.</strong> One document store, one embedding model, one retrieval step. The framework overhead does not simplify a pipeline that is already simple. A LlamaIndex <code>VectorStoreIndex</code> wrapping a Pinecone client has more moving parts than calling the Pinecone client directly, with no additional capability for this use case. SDK-direct is shorter, faster, and fully transparent.</p>
+      <p><strong>Latency is a constraint.</strong> LlamaIndex framework overhead — object initialization, node processing pipeline, response synthesizer dispatch — adds measurable latency compared to an equivalent SDK-direct call. I measured 160–220ms of pure framework overhead on a simple LlamaIndex <code>VectorStoreIndex</code> query engine versus the same retrieval and generation steps written SDK-direct against the same Pinecone index. On a conversational product where first-token latency is felt by the user, this overhead is not free.</p>
+      <p><strong>Custom pipeline logic is the product.</strong> If the chunking strategy, reranking algorithm, or context assembly method is proprietary — the differentiated IP of the application — it is easier to own that code than to adapt it to the framework's node and postprocessor abstractions. LlamaIndex's <code>NodeParser</code> and <code>BaseNodePostprocessor</code> interfaces work, but imposing domain-specific logic through framework extension points adds friction that is not present in code you write directly.</p>
+      <p><strong>You need to debug under production pressure.</strong> The SDK call stack is flat. You call an API, you get a response, everything in between is your code. LlamaIndex's call stack has multiple abstraction layers between your query and the model call. When something fails on a Friday night, the debugging path matters.</p>
+    </div>
+
+    <div class="cards-grid cols-2">
+      <div class="card card-red">
+        <div class="card-icon-badge">Framework Cost</div>
+        <h4>160–220ms overhead per request</h4>
+        <p>Measured on a simple VectorStoreIndex query engine vs equivalent SDK-direct pipeline. Grows with more postprocessor steps.</p>
+      </div>
+      <div class="card card-green">
+        <div class="card-icon-badge">SDK Advantage</div>
+        <h4>Flat call stack, zero framework magic</h4>
+        <p>Every line between the user query and the model call is yours. Log any step, replace any step, debug any step without callback hooks.</p>
+      </div>
+    </div>
+
+    <div class="callout">
+      <div class="callout-lbl">The small corpus trap</div>
+      <p>The most common LlamaIndex over-engineering I see: teams build a full framework pipeline for an internal knowledge base of 50–200 documents. For a corpus that small, pass the entire thing in a long-context window and skip retrieval entirely. Full-context on 200 pages fits in Claude's context window. RAG adds retrieval risk to a corpus small enough to avoid it. LlamaIndex adds framework overhead on top of that. The correct tool for 200 documents is a 200k-token context and one API call.</p>
+    </div>
+  </div>
+
+  <div class="section" id="hybrid">
+    <div class="section-label">07 — The Better Pattern</div>
+    <h2><a class="anchor" href="#hybrid">The Hybrid Pattern</a></h2>
+    <div class="prose">
+      <p>The most underused option: use LlamaIndex for data ingestion and indexing, then use the SDK for generation. You get the connector ecosystem without ceding control over the prompt.</p>
+      <p>LlamaIndex ingests your documents, handles connector authentication, normalizes document schemas, and builds the vector index. On a query, you call <code>retriever.retrieve(query)</code> to get the top-k nodes. You take those nodes, construct the prompt exactly as you want it, and call the Anthropic SDK for the generation step. LlamaIndex never touches the model call.</p>
+    </div>
+
+    <div class="code-block">
+      <div class="cb-label">Python — LlamaIndex for retrieval, Anthropic SDK for generation</div>
+      <pre><span class="tok-key">import</span> anthropic
+<span class="tok-key">from</span> llama_index.core <span class="tok-key">import</span> VectorStoreIndex
+<span class="tok-key">from</span> llama_index.readers.notion <span class="tok-key">import</span> NotionPageReader
+
+<span class="tok-cmt"># LlamaIndex handles ingestion and indexing</span>
+docs = NotionPageReader(integration_token=NOTION_TOKEN).load_data(page_ids=PAGE_IDS)
+index = VectorStoreIndex.from_documents(docs)
+retriever = index.as_retriever(similarity_top_k=<span class="tok-val">5</span>)
+
+<span class="tok-cmt"># You handle generation — full prompt control</span>
+anthropic_client = anthropic.Anthropic()
+
+<span class="tok-key">def</span> answer(query: str) -> str:
+    nodes = retriever.retrieve(query)
+    context = <span class="tok-str">"\n\n"</span>.join(node.text <span class="tok-key">for</span> node <span class="tok-key">in</span> nodes)
+
+    <span class="tok-cmt"># Your prompt, exactly as you want it — no framework synthesizer</span>
+    system = <span class="tok-str">(
+        "You are a technical assistant for the engineering team. "
+        "Answer only from the provided context. "
+        "If the answer is not in the context, say 'I do not have that information.'"
+    )</span>
+    user = <span class="tok-str">f"Context:\n{context}\n\nQuestion: {query}"</span>
+
+    response = anthropic_client.messages.create(
+        model=<span class="tok-str">"claude-sonnet-4-5"</span>,
+        max_tokens=<span class="tok-val">1024</span>,
+        system=system,
+        messages=[{<span class="tok-str">"role"</span>: <span class="tok-str">"user"</span>, <span class="tok-str">"content"</span>: user}]
+    )
+    <span class="tok-key">return</span> response.content[<span class="tok-val">0</span>].text
+
+<span class="tok-cmt"># LlamaIndex owns the data layer. Anthropic SDK owns the model call.</span>
+<span class="tok-cmt"># Neither owns the other's domain.</span></pre>
+    </div>
+
+    <div class="prose">
+      <p>This is not a workaround. LlamaIndex explicitly supports using the retriever as a standalone component. The <code>as_retriever()</code> method returns a retriever that is independent of the query engine and response synthesizer. The framework's author documented this path because it is a legitimate usage pattern, not a misuse of the library.</p>
+      <p>The hybrid pattern is my default recommendation when a team needs multi-source ingestion but wants to maintain prompt control. It gives you LlamaIndex where LlamaIndex is valuable — the data pipeline — and the SDK where the SDK is valuable — the model call.</p>
+    </div>
+  </div>
+
+  <div class="section" id="decision-table">
+    <div class="section-label">08 — The Framework</div>
+    <h2><a class="anchor" href="#decision-table">Decision Framework</a></h2>
+    <div class="prose">
+      <p>The decision is driven by data pipeline complexity, not preference. These are the conditions that should move the needle.</p>
+    </div>
+
+    <div class="data-table">
+      <table>
+        <thead>
+          <tr>
+            <th>Condition</th>
+            <th class="center">LlamaIndex</th>
+            <th class="center">SDK-Direct</th>
+            <th>Why</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Single data source, single retrieval step</td>
+            <td class="center td-no">No</td>
+            <td class="center td-yes">Yes</td>
+            <td>Framework overhead adds no capability. SDK-direct is shorter and debuggable.</td>
+          </tr>
+          <tr>
+            <td>Multiple data sources (3+) with different connectors</td>
+            <td class="center td-yes">Yes</td>
+            <td class="center td-no">No</td>
+            <td>Connector library saves weeks of loader implementation. This is LlamaIndex's core strength.</td>
+          </tr>
+          <tr>
+            <td>Routing queries across heterogeneous indexes</td>
+            <td class="center td-yes">Yes</td>
+            <td class="center td-no">No</td>
+            <td>RouterQueryEngine with LLMSingleSelector is 12 lines. SDK-direct requires building classification and dispatch from scratch.</td>
+          </tr>
+          <tr>
+            <td>Agents with retrieval as one of many tools</td>
+            <td class="center td-yes">Yes</td>
+            <td class="center td-mid">Maybe</td>
+            <td>LlamaIndex composes retrieval into agent tool abstractions cleanly. Anthropic SDK tool-use also works but requires more wiring.</td>
+          </tr>
+          <tr>
+            <td>Latency-sensitive path (&lt;1s first-token target)</td>
+            <td class="center td-no">No</td>
+            <td class="center td-yes">Yes</td>
+            <td>LlamaIndex adds 160–220ms overhead per request. On latency-sensitive paths, this is measurable and felt.</td>
+          </tr>
+          <tr>
+            <td>Custom chunking or embedding logic as core IP</td>
+            <td class="center td-no">No</td>
+            <td class="center td-yes">Yes</td>
+            <td>Extending framework node parsers adds friction. Owning the chunking code is cleaner when the logic is proprietary.</td>
+          </tr>
+          <tr>
+            <td>Corpus under 200 documents</td>
+            <td class="center td-no">No</td>
+            <td class="center td-no">No</td>
+            <td>Pass everything in a long-context window and skip retrieval. RAG adds risk to a corpus small enough to avoid it entirely.</td>
+          </tr>
+          <tr>
+            <td>Need multi-source ingestion but want prompt control</td>
+            <td class="center td-mid">Partial</td>
+            <td class="center td-mid">Partial</td>
+            <td>Use the hybrid pattern: LlamaIndex for ingestion and retrieval, Anthropic SDK for the generation call.</td>
+          </tr>
+          <tr>
+            <td>Built-in retrieval evals and observability</td>
+            <td class="center td-yes">Yes</td>
+            <td class="center td-no">No</td>
+            <td>LlamaIndex ships faithfulness and relevance evaluators and integrates with tracing backends. SDK-direct requires building or wiring your own.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout">
+      <div class="callout-lbl">Start with the SDK, migrate when the pipeline grows</div>
+      <p>The lowest-risk path: start with the Anthropic SDK for your first production RAG system. When you add a second data source with a different connector, evaluate LlamaIndex's reader for that connector. When you need to route queries across two indexes, evaluate RouterQueryEngine. Adopt framework components incrementally as they solve problems you actually have, not problems you anticipate having.</p>
+    </div>
+  </div>
+
+  <div class="section" id="frame">
+    <div class="section-label">09 — Takeaway</div>
+    <h2><a class="anchor" href="#frame">The Frame to Leave On</a></h2>
+    <div class="prose">
+      <p>LlamaIndex is an excellent framework for the problems it is designed to solve. Multi-source ingestion, query routing across heterogeneous indexes, and agents with retrieval tools are genuinely hard to build well without the infrastructure it provides. Reaching for it on those problems is the right call.</p>
+      <p>For a single-source retrieval pipeline, the Anthropic SDK with your own chunking and retrieval code is shorter, faster, and easier to debug. The framework does not make a simple pipeline better. It makes it more opaque. That trade is only worth making when the framework is solving complexity that would otherwise require significant custom work.</p>
+      <p>The question to ask before choosing is not which tool is more capable. It is: what is the irreducible complexity of this pipeline, and does the framework address it?</p>
+    </div>
+  </div>
+
+</div>
+
+<footer>
+  <span>krishanavatar.github.io · July 2026</span>
+  <div class="footer-refs">
+    <a href="/">&#8592; back to index</a>
+  </div>
+</footer>
+
+<script>
+  (function () {
+    var btn = document.getElementById('theme-toggle');
+    if (!btn) return;
+    btn.addEventListener('click', function () {
+      var cur = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+      var next = cur === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', next);
+      try { localStorage.setItem('theme', next); } catch (e) {}
+    });
+  })();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,7 @@
+{
+  "title": "LlamaIndex or the SDK: When to Use Each",
+  "summary": "A framework decision guide for LLM engineers — when LlamaIndex's connector ecosystem and routing infrastructure pay off, and when the Anthropic or OpenAI SDK with your own pipeline code is the right call.",
+  "date": "2026-07-18",
+  "tag": "LLM Engineering",
+  "readingTime": "10 min"
+}
