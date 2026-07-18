@@ -1,0 +1,7 @@
+{
+  "title": "SOLID Principles in Production: Why I Use Them, and What They Cost",
+  "summary": "Five rules from 2000 that still hold up. The real case for using SOLID in production, the indirection tax nobody mentions in the talks, and the heuristic I use to decide when a principle is worth invoking.",
+  "date": "2026-07-17",
+  "tag": "Architecture",
+  "readingTime": "9 min"
+}

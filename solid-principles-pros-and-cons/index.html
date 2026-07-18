@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SOLID Principles in Production: Why I Use Them, and What They Cost</title>
+<script>
+  (function () {
+    try {
+      var saved = localStorage.getItem('theme');
+      var theme = saved || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+      document.documentElement.setAttribute('data-theme', theme);
+    } catch (e) {}
+  })();
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;0,6..72,500;0,6..72,600;0,6..72,700;1,6..72,300;1,6..72,400&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:           #F5F1EB;
+    --bg-alt:       #EDEAE3;
+    --surface:      #FFFFFF;
+    --surface-tint: #FAF8F5;
+    --border:       #DDD9D0;
+    --border-light: #EAE7E0;
+    --text:         #1A1714;
+    --text-body:    #3D3A35;
+    --text-muted:   #6B6760;
+    --text-subtle:  #9B9892;
+    --accent:       #C85C2D;
+    --accent-light: #E8895D;
+    --accent-bg:    #FDF1EB;
+    --accent-border:#F0C4A8;
+    --green:        #2A7A4B;
+    --green-bg:     #EAF5EF;
+    --green-border: #A8D9BC;
+    --blue:         #2563A8;
+    --blue-bg:      #EAF1FA;
+    --blue-border:  #A8C5E8;
+    --red:          #B83535;
+    --red-bg:       #FAEBEB;
+    --red-border:   #E8AAAA;
+    --code-bg:      #1A1714;
+    --shadow:       rgba(200,92,45,0.08);
+    --serif:        'Newsreader', Georgia, serif;
+    --sans:         'Inter', system-ui, sans-serif;
+    --mono:         'JetBrains Mono', 'Courier New', monospace;
+    color-scheme: light;
+  }
+  [data-theme="dark"] {
+    --bg:           #14110D;
+    --bg-alt:       #1E1A14;
+    --surface:      #1A1611;
+    --surface-tint: #211C16;
+    --border:       #332C24;
+    --border-light: #2A241D;
+    --text:         #F2EEE7;
+    --text-body:    #D8D2C8;
+    --text-muted:   #A39C90;
+    --text-subtle:  #7A7468;
+    --accent:       #E8895D;
+    --accent-light: #F0A079;
+    --accent-bg:    #2C1E14;
+    --accent-border:#5A3826;
+    --green:        #5FD699;
+    --green-bg:     #14241B;
+    --green-border: #2E5640;
+    --blue:         #6FB0F0;
+    --blue-bg:      #142233;
+    --blue-border:  #2C4A6E;
+    --red:          #F08585;
+    --red-bg:       #2E1717;
+    --red-border:   #663434;
+    --code-bg:      #0E0B08;
+    --shadow:       rgba(0,0,0,0.45);
+    color-scheme: dark;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg);
+    color: var(--text-body);
+    font-family: var(--sans);
+    font-size: 17px;
+    line-height: 1.75;
+    font-weight: 400;
+  }
+  nav {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 0 48px;
+    height: 52px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .nav-brand { font-family: var(--sans); font-size: 13px; font-weight: 600; color: var(--text); letter-spacing: 0.01em; text-decoration: none; }
+  .nav-right { display: flex; align-items: center; gap: 20px; font-size: 13px; color: var(--text-muted); }
+  .nav-tag { background: var(--accent); color: #fff; font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 3px; letter-spacing: 0.04em; }
+  .theme-toggle { background: none; border: 1px solid var(--border); border-radius: 6px; width: 30px; height: 30px; flex-shrink: 0; cursor: pointer; color: var(--text-muted); font-size: 14px; line-height: 1; display: inline-flex; align-items: center; justify-content: center; transition: color 0.15s, border-color 0.15s; }
+  .theme-toggle:hover { color: var(--accent); border-color: var(--accent-border); }
+  .theme-icon-sun { display: none; }
+  [data-theme="dark"] .theme-icon-sun  { display: inline; }
+  [data-theme="dark"] .theme-icon-moon { display: none; }
+  .page-wrap { max-width: 760px; margin: 0 auto; padding: 0 24px 80px; }
+  .hero { padding: 64px 0 48px; border-bottom: 1px solid var(--border); margin-bottom: 48px; }
+  .hero-eyebrow { font-family: var(--sans); font-size: 12px; font-weight: 600; color: var(--accent); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 16px; }
+  .hero h1 { font-family: var(--serif); font-size: clamp(34px, 5vw, 52px); font-weight: 600; line-height: 1.1; letter-spacing: -0.02em; color: var(--text); margin-bottom: 20px; }
+  .hero-deck { font-size: 18px; line-height: 1.65; color: var(--text-muted); max-width: 640px; font-weight: 300; }
+  .hero-meta { margin-top: 24px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12px; color: var(--text-subtle); font-family: var(--mono); }
+  .hero-meta-sep { color: var(--border); }
+  .prose p { color: var(--text-body); margin-bottom: 20px; font-size: 17px; line-height: 1.78; }
+  .prose p:last-child { margin-bottom: 0; }
+  strong { color: var(--text); font-weight: 600; }
+  em { font-style: italic; color: var(--text-body); }
+  .section { margin-top: 56px; scroll-margin-top: 72px; }
+  .section-label { font-family: var(--sans); font-size: 11px; font-weight: 600; color: var(--accent); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 8px; }
+  .section h2 { font-family: var(--serif); font-size: 28px; font-weight: 600; line-height: 1.2; letter-spacing: -0.01em; color: var(--text); margin-bottom: 24px; }
+  .section h2 a.anchor { color: inherit; text-decoration: none; position: relative; }
+  .section h2 a.anchor:hover::before { content: '#'; position: absolute; left: -22px; color: var(--accent); font-weight: 400; }
+  h3 { font-family: var(--serif); font-size: 20px; font-weight: 600; color: var(--text); margin: 32px 0 14px; letter-spacing: -0.01em; }
+  .banner { background: var(--accent-bg); border: 1px solid var(--accent-border); border-left: 3px solid var(--accent); border-radius: 6px; padding: 16px 20px; margin-bottom: 40px; display: flex; gap: 12px; align-items: flex-start; }
+  .banner-badge { background: var(--accent); color: #fff; font-family: var(--mono); font-size: 10px; font-weight: 500; padding: 2px 8px; border-radius: 3px; white-space: nowrap; flex-shrink: 0; margin-top: 2px; }
+  .banner p { font-size: 14px; color: var(--text-muted); line-height: 1.6; margin: 0; }
+  .plain-english { background: var(--surface); border: 1px solid var(--border); border-top: 3px solid var(--accent); border-radius: 0 0 8px 8px; padding: 28px 32px; margin: 0 0 56px; }
+  .plain-english .pe-label { font-family: var(--sans); font-size: 11px; font-weight: 700; color: var(--accent); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 16px; }
+  .pe-list { list-style: none; padding: 0; }
+  .pe-list li { display: flex; gap: 14px; align-items: flex-start; padding: 14px 0; border-bottom: 1px solid var(--border-light); font-size: 16px; color: var(--text-body); line-height: 1.6; }
+  .pe-list li:last-child { border-bottom: none; }
+  .pe-num { width: 26px; height: 26px; background: var(--accent); color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0; margin-top: 1px; font-family: var(--mono); }
+  .cards-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin: 24px 0; }
+  .cards-grid:has(> .card:nth-child(2):last-child), .cards-grid:has(> .card:nth-child(4):last-child), .cards-grid.cols-2 { grid-template-columns: repeat(2, 1fr); }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 20px 22px; transition: border-color 0.2s, box-shadow 0.2s; }
+  .card:hover { border-color: var(--accent-border); box-shadow: 0 2px 8px var(--shadow); }
+  .card h4 { font-family: var(--sans); font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 7px; }
+  .card p { font-size: 13px; color: var(--text-muted); line-height: 1.6; margin: 0; }
+  .card.card-red { border-color: var(--red-border); }
+  .card.card-red .card-icon-badge { display: inline-block; background: var(--red-bg); color: var(--red); font-size: 10px; font-weight: 700; letter-spacing: 0.06em; padding: 2px 7px; border-radius: 3px; margin-bottom: 10px; text-transform: uppercase; }
+  .card.card-green { border-color: var(--green-border); }
+  .card.card-green .card-icon-badge { display: inline-block; background: var(--green-bg); color: var(--green); font-size: 10px; font-weight: 700; letter-spacing: 0.06em; padding: 2px 7px; border-radius: 3px; margin-bottom: 10px; text-transform: uppercase; }
+  .card.card-blue { border-color: var(--blue-border); }
+  .card.card-blue .card-icon-badge { display: inline-block; background: var(--blue-bg); color: var(--blue); font-size: 10px; font-weight: 700; letter-spacing: 0.06em; padding: 2px 7px; border-radius: 3px; margin-bottom: 10px; text-transform: uppercase; }
+  .code-block { background: var(--code-bg); border-radius: 7px; overflow: hidden; margin: 20px 0; }
+  .code-block .cb-label { padding: 9px 16px; background: rgba(255,255,255,0.06); border-bottom: 1px solid rgba(255,255,255,0.08); font-family: var(--mono); font-size: 11px; color: #888; letter-spacing: 0.06em; text-transform: uppercase; display: flex; align-items: center; justify-content: space-between; }
+  .code-block pre { padding: 20px; font-family: var(--mono); font-size: 13.5px; line-height: 1.7; color: #e8e8e8; overflow-x: auto; white-space: pre; }
+  .code-block .tok-key  { color: #fdba74; }
+  .code-block .tok-val  { color: #86efac; }
+  .code-block .tok-cmt  { color: #6b7280; font-style: italic; }
+  .code-block .tok-str  { color: #93c5fd; }
+  .code-block .tok-acc  { color: #fde047; }
+  .callout { background: var(--accent-bg); border: 1px solid var(--accent-border); border-left: 3px solid var(--accent); border-radius: 0 6px 6px 0; padding: 18px 22px; margin: 24px 0; }
+  .callout .callout-lbl { font-size: 11px; font-weight: 700; color: var(--accent); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 6px; }
+  .callout p { font-size: 15px; color: var(--text-muted); margin: 0; line-height: 1.7; }
+  ul.dl { list-style: none; padding: 0; margin: 0 0 24px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--surface); }
+  ul.dl li { position: relative; padding: 13px 18px 13px 34px; font-size: 15px; color: var(--text-body); border-bottom: 1px solid var(--border-light); line-height: 1.65; }
+  ul.dl li:last-child { border-bottom: none; }
+  ul.dl li::before { content: '→'; position: absolute; left: 14px; top: 13px; color: var(--accent); font-size: 14px; }
+  .data-table { overflow-x: auto; margin: 24px 0; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+  .data-table table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  .data-table table.fixed { table-layout: fixed; }
+  .data-table thead th { padding: 11px 16px; text-align: left; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; background: var(--bg-alt); border-bottom: 1px solid var(--border); color: var(--text-muted); white-space: nowrap; vertical-align: bottom; }
+  .data-table tbody td { padding: 11px 16px; border-bottom: 1px solid var(--border-light); color: var(--text-body); vertical-align: top; line-height: 1.55; overflow-wrap: anywhere; }
+  .data-table tbody tr:last-child td { border-bottom: none; }
+  .data-table tbody tr:hover td { background: var(--surface-tint); }
+  .data-table tbody td:first-child { font-weight: 600; color: var(--text); }
+  .data-table th.center, .data-table td.center { text-align: center; }
+  .data-table th.num, .data-table td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .td-yes { color: var(--green); font-weight: 600; }
+  .td-no  { color: var(--red);   font-weight: 600; }
+  .td-mono { font-family: var(--mono); font-size: 12px; color: var(--accent); }
+  footer { background: var(--surface); border-top: 1px solid var(--border); padding: 20px 48px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; font-size: 13px; color: var(--text-muted); }
+  footer a { color: var(--accent); text-decoration: none; }
+  footer a:hover { text-decoration: underline; }
+  .footer-refs { font-size: 12px; color: var(--text-subtle); }
+  @media (max-width: 600px) {
+    nav { padding: 0 20px; }
+    .hero { padding: 40px 0 36px; }
+    .page-wrap { padding: 0 16px 60px; }
+    footer { padding: 16px 20px; }
+    .plain-english { padding: 20px; }
+    .cards-grid, .cards-grid.cols-2, .cards-grid.cols-3 { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <a class="nav-brand" href="/">krishanavatar.github.io</a>
+  <div class="nav-right">
+    <span>Software Design</span>
+    <span class="nav-tag">JUL 2026</span>
+    <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle dark mode" title="Toggle dark mode">
+      <span class="theme-icon-moon" aria-hidden="true">&#9790;</span>
+      <span class="theme-icon-sun" aria-hidden="true">&#9728;</span>
+    </button>
+  </div>
+</nav>
+
+<div class="page-wrap">
+
+  <header class="hero">
+    <div class="hero-eyebrow">Software Design — Object-Oriented Architecture</div>
+    <h1>SOLID Principles in Production: Why I Use Them, and What They Cost</h1>
+    <p class="hero-deck">Five rules from 2000 that predate microservices, most modern frameworks, and every LLM API you're calling today. I still reach for them weekly. Here is the actual case for using SOLID, the tax nobody mentions in the talks, and how I decide when a principle is worth invoking.</p>
+    <div class="hero-meta">
+      <span>krishanavatar.github.io</span>
+      <span class="hero-meta-sep">/</span>
+      <span>July 2026</span>
+      <span class="hero-meta-sep">/</span>
+      <span>9 min read</span>
+    </div>
+  </header>
+
+  <div class="banner">
+    <span class="banner-badge">THESIS</span>
+    <p>SOLID is not a checklist to satisfy on every class you write. It is a set of forces you invoke when change, not readability, is the actual problem you're solving.</p>
+  </div>
+
+  <div class="plain-english">
+    <div class="pe-label">The Five Letters, Fast</div>
+    <ul class="pe-list">
+      <li>
+        <span class="pe-num">S</span>
+        <div><strong>Single Responsibility</strong> — a class has one reason to change. Mixing OCR extraction, confidence scoring, and review-queue routing in one class means a scoring tweak risks breaking extraction that already works.</div>
+      </li>
+      <li>
+        <span class="pe-num">O</span>
+        <div><strong>Open/Closed</strong> — extend behavior by adding code, not editing a central switch. A growing <code>if/elif</code> on a type string is the smell.</div>
+      </li>
+      <li>
+        <span class="pe-num">L</span>
+        <div><strong>Liskov Substitution</strong> — a subtype has to honor every guarantee its base type made. A subclass that raises where the parent promised success breaks every caller written against the base contract.</div>
+      </li>
+      <li>
+        <span class="pe-num">I</span>
+        <div><strong>Interface Segregation</strong> — don't force a class to implement methods it can't support. Small, role-shaped interfaces beat one interface with five stub methods.</div>
+      </li>
+      <li>
+        <span class="pe-num">D</span>
+        <div><strong>Dependency Inversion</strong> — high-level logic depends on an abstraction, not a concrete class. The concrete choice gets wired in exactly once, at the edge of the program.</div>
+      </li>
+    </ul>
+  </div>
+
+  <div class="section" id="the-gospel">
+    <div class="section-label">01 — Context</div>
+    <h2><a class="anchor" href="#the-gospel">The Principles Everyone Cites, Few Apply Well</a></h2>
+    <div class="prose">
+      <p>SOLID gets cited in interviews more than it gets practiced in production. Most engineers can recite the five letters. Fewer can tell you which one they'd invoke on the file open in front of them right now, and why it applies there and not on the file next to it.</p>
+      <p>Robert Martin named these principles in the early 2000s, pulling together ideas that had been circulating in the object-oriented design community since the 1980s. They predate dependency injection frameworks, they predate microservices, and they certainly predate calling an LLM API from inside a request handler. The fact that they still hold up says something. So does the fact that most teams apply them inconsistently: rigorously in the auth module, not at all in the script that reconciles Friday's billing export.</p>
+      <p>I built a small companion repository with five runnable Python examples, one per letter, each with a before/after: <a href="https://github.com/krishanavatar/soild-principle" target="_blank" rel="noopener">github.com/krishanavatar/soild-principle</a>. I'll pull two of those scenarios into this post because a principle argued in the abstract is easy to nod along to and hard to actually use.</p>
+    </div>
+  </div>
+
+  <div class="section" id="the-case-for">
+    <div class="section-label">02 — The Case For</div>
+    <h2><a class="anchor" href="#the-case-for">Why I Still Use It in Production</a></h2>
+    <div class="prose">
+      <p>The honest reason I reach for SOLID isn't elegance. It's that I've been paged for the alternative.</p>
+      <p>On our document intelligence pipeline at Infrrd, every page gets run through an <code>OCREngine</code> interface before extraction. When a specific document type needed a different OCR provider to hit acceptable confidence scores, the fix was a new class implementing that same interface, routed in for that document type. The pipeline that calls it never changed. The extractors for every other document type never changed. Nothing that already worked in production needed to be retested, because nothing that already worked was touched. That is the Open/Closed principle paying for itself on real documents, not in theory.</p>
+      <p>Single Responsibility earns its keep at onboarding time more than at write time. A new engineer reading a <code>ConfidenceScorer</code> that only scores extracted fields can trust it does nothing else. They don't have to trace through OCR calls or review-queue routing to convince themselves a scoring-threshold change is safe. That confidence compounds across a team doing code review on each other's pull requests in the same pipeline.</p>
+      <p>Dependency Inversion is the one that saves me in tests, every day, not just on the day an OCR provider changes. Our extraction service is built against that same <code>OCREngine</code> protocol, so its test suite takes a fake OCR engine and asserts on what got returned, no real OCR call, no network round trip, no flaky CI run because a vendor's sandbox is down. I don't do this because a textbook told me to. I do it because I've maintained pipelines where a test suite depended on a live OCR endpoint, and I know what a Tuesday morning looks like when that endpoint is down.</p>
+    </div>
+  </div>
+
+  <div class="section" id="hidden-cost">
+    <div class="section-label">03 — The Cost</div>
+    <h2><a class="anchor" href="#hidden-cost">The Cost Nobody Puts in the Talk</a></h2>
+    <div class="prose">
+      <p>Every SOLID conference talk shows the payoff. Almost none shows the invoice.</p>
+      <p>The first cost is indirection. An interface, a factory, and three implementations for an OCR engine that will only ever run one vendor's library is harder to read than the direct version, not easier. I've opened pipelines where finding the actual OCR call meant walking through an engine interface, a factory, and a dependency-injection container registration, four files for one call to a library nobody ever swapped out. That is Dependency Inversion applied to a dependency that was never going anywhere.</p>
+      <p>The second cost is premature generalization disguised as Open/Closed. I've seen a <code>DocumentClassifier</code> built with a pluggable strategy pattern for five model backends when the pipeline only ever shipped one YOLO-based classifier. The plugin architecture existed to serve backends nobody had requested. Long after, nobody had added a second backend, and the abstraction was pure overhead on every change to the one classifier actually in use.</p>
+      <p>The third cost is speed of shipping the first version. If you are validating whether a feature has any users at all, wiring up five interfaces before you've proven the feature is worth building is optimizing for a change that a failed experiment will never need.</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-lbl">The tell that you've over-applied it</div>
+      <p>If you cannot explain, out loud, what concrete second implementation an interface exists for, you have built abstraction for its own sake. "We might need it later" is not a second implementation. A second implementation is a second implementation.</p>
+    </div>
+  </div>
+
+  <div class="section" id="pros-cons">
+    <div class="section-label">04 — Balance Sheet</div>
+    <h2><a class="anchor" href="#pros-cons">Pros and Cons, Without the Sales Pitch</a></h2>
+    <div class="prose">
+      <p>Laid out side by side, the trade is legible. It's a trade, not a free upgrade, which is exactly why it needs judgment instead of a rule that always applies.</p>
+    </div>
+
+    <div class="data-table">
+      <table>
+        <thead>
+          <tr>
+            <th>Principle</th>
+            <th>What you gain</th>
+            <th>What it costs</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Single Responsibility</td>
+            <td>Smaller units, easier review, isolated test failures</td>
+            <td>More files; a simple task can span three of them</td>
+          </tr>
+          <tr>
+            <td>Open/Closed</td>
+            <td>New behavior added without touching, or breaking, old behavior</td>
+            <td>An interface and implementation for variants that may never arrive</td>
+          </tr>
+          <tr>
+            <td>Liskov Substitution</td>
+            <td>Callers can trust the base contract; no surprise exceptions</td>
+            <td>Forces you to model a "different" case as a new type, more upfront design</td>
+          </tr>
+          <tr>
+            <td>Interface Segregation</td>
+            <td>No stub methods, no lying about capability</td>
+            <td>More interfaces to track; easy to over-split into single-method traits</td>
+          </tr>
+          <tr>
+            <td>Dependency Inversion</td>
+            <td>Swappable dependencies, fast unit tests with fakes</td>
+            <td>A layer of indirection between the caller and the thing that does the work</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="section" id="worth-it">
+    <div class="section-label">05 — Applicability</div>
+    <h2><a class="anchor" href="#worth-it">Where It's Worth It vs Where It's Overkill</a></h2>
+    <div class="prose">
+      <p>The variable that matters is not the size of the codebase. It's whether the part you're touching is expected to change, and whether more than one person depends on the contract staying stable.</p>
+    </div>
+
+    <div class="cards-grid cols-2">
+      <div class="card card-green">
+        <div class="card-icon-badge">Worth it</div>
+        <h4>OCR engines, document-type extractors, review-queue notifiers</h4>
+        <p>Concrete history of swapping providers per document type, or a near-certain roadmap item to add one. Multiple call sites depend on the same contract staying stable.</p>
+      </div>
+      <div class="card card-red">
+        <div class="card-icon-badge">Overkill</div>
+        <h4>A one-off backfill script that re-scores last quarter's documents</h4>
+        <p>Single author, single run, or a lifespan measured in weeks. The abstraction outlives the code it was meant to protect.</p>
+      </div>
+      <div class="card card-green">
+        <div class="card-icon-badge">Worth it</div>
+        <h4>Anything with more than two engineers reading and modifying it regularly</h4>
+        <p>Single Responsibility reduces the blast radius of one person's change on another person's area. That coordination cost is real and SOLID is buying it down.</p>
+      </div>
+      <div class="card card-red">
+        <div class="card-icon-badge">Overkill</div>
+        <h4>Per-tenant confidence thresholds that change monthly by design</h4>
+        <p>If the "variation" is actually data (thresholds, feature flags, per-document-type limits), model it as data. A polymorphic class hierarchy for something that's really a lookup table adds ceremony with no benefit.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="section" id="code-example">
+    <div class="section-label">06 — Worked Example</div>
+    <h2><a class="anchor" href="#code-example">One Principle, One Real Refactor</a></h2>
+    <div class="prose">
+      <p>Dependency Inversion is the principle that shows its value most clearly in a diff, so here's the same <code>OCREngine</code> boundary from earlier, simplified down to the shape that matters. The starting point: a <code>DocumentProcessor</code> that constructs its own OCR engine.</p>
+    </div>
+
+    <div class="code-block">
+      <div class="cb-label">Python — before: welded to a concrete OCR engine</div>
+      <pre><span class="tok-key">class</span> DocumentProcessor:
+    <span class="tok-key">def</span> __init__(self):
+        <span class="tok-cmt"># the high-level class now owns a low-level detail</span>
+        self._ocr = TesseractOCR()
+
+    <span class="tok-key">def</span> process(self, document):
+        text = self._ocr.read(document)
+        <span class="tok-key">return</span> score_confidence(text)</pre>
+    </div>
+
+    <div class="prose">
+      <p>Testing this means either mocking <code>TesseractOCR</code> internals or running a real OCR call in your test suite. Routing one document type to a different OCR provider means editing <code>DocumentProcessor</code> itself. The fix inverts the dependency: <code>DocumentProcessor</code> depends on the <code>OCREngine</code> protocol, and the concrete engine is injected from outside.</p>
+    </div>
+
+    <div class="code-block">
+      <div class="cb-label">Python — after: depends on OCREngine, injected at the edge</div>
+      <pre><span class="tok-key">class</span> OCREngine(Protocol):
+    <span class="tok-key">def</span> read(self, document) -> str: ...
+
+<span class="tok-key">class</span> DocumentProcessor:
+    <span class="tok-key">def</span> __init__(self, ocr: OCREngine):
+        self._ocr = ocr   <span class="tok-cmt"># chosen by the caller, not by this class</span>
+
+    <span class="tok-key">def</span> process(self, document):
+        text = self._ocr.read(document)
+        <span class="tok-key">return</span> score_confidence(text)
+
+<span class="tok-cmt"># composition root: the ONE place that knows the concrete engine</span>
+processor = DocumentProcessor(TesseractOCR())
+
+<span class="tok-cmt"># routing a different document type to a different provider needs</span>
+<span class="tok-cmt"># no change to DocumentProcessor itself</span>
+processor = DocumentProcessor(AzureFormRecognizer())
+
+<span class="tok-cmt"># tests: no OCR call, no network, just a fake that returns fixed text</span>
+processor = DocumentProcessor(FakeOCREngine())</pre>
+    </div>
+
+    <div class="prose">
+      <p>Four lines changed the shape of the class. The gain is not aesthetic. It's that <code>DocumentProcessor</code>'s test suite now runs in milliseconds with zero external calls, and routing a new document type to a different OCR provider later touches zero lines inside <code>DocumentProcessor</code>.</p>
+    </div>
+  </div>
+
+  <div class="section" id="heuristic">
+    <div class="section-label">07 — Decision Rule</div>
+    <h2><a class="anchor" href="#heuristic">The Heuristic I Actually Use</a></h2>
+    <div class="prose">
+      <p>I don't open a new file asking "which SOLID principles should I apply." I write the direct version first. I reach for a principle only once I can point to the specific pain it removes.</p>
+    </div>
+
+    <ul class="dl">
+      <li><strong>Apply Single Responsibility</strong> when a class's test setup requires mocking more than one unrelated thing (an OCR engine and a notification service for what's supposed to be a confidence-scoring function).</li>
+      <li><strong>Apply Open/Closed</strong> once you're adding the second document type or the second OCR provider, not before the first one exists. One implementation doesn't need an interface.</li>
+      <li><strong>Apply Liskov Substitution</strong> as a check, not a pattern to add code for: before you subclass, ask whether every existing caller of the base type still gets what it was promised.</li>
+      <li><strong>Apply Interface Segregation</strong> the moment you write <code>raise NotImplementedError</code> in a method your class was forced to implement, like a read-only document archive forced to implement a write method it will never support. That line is the signal, not a red flag to just accept.</li>
+      <li><strong>Apply Dependency Inversion</strong> at any boundary that talks to something outside your process: an OCR engine, a database, an LLM API, a queue. Inside a single pure function, it's rarely worth it.</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-lbl">Retrofit over predict</div>
+      <p>Every case above is diagnosed from evidence already in front of you, a real second implementation, a real mocking headache, a real stub method. None of them require predicting the future. That's the difference between applying SOLID and performing it.</p>
+    </div>
+  </div>
+
+  <div class="section" id="team-cost">
+    <div class="section-label">08 — The Team Dimension</div>
+    <h2><a class="anchor" href="#team-cost">The Team Dimension</a></h2>
+    <div class="prose">
+      <p>Everything above is framed at the level of one engineer and one file. The variable that shifts the math most in practice is team size, and specifically, how many people touch the same module without talking to each other first.</p>
+      <p>On a team of two who sit next to each other, a shared mental model substitutes for a lot of structural enforcement. On a team of eight spread across two time zones, the interface boundary is doing communication work that a hallway conversation would otherwise do. The same class, written the same way, is under-engineered on the first team and correctly engineered on the second.</p>
+      <p>This is why I don't think SOLID is a property of code in isolation. It's a property of code relative to how many people depend on its contract staying still while they're not looking.</p>
+    </div>
+  </div>
+
+  <div class="section" id="frame">
+    <div class="section-label">09 — Takeaway</div>
+    <h2><a class="anchor" href="#frame">The Frame to Leave On</a></h2>
+    <div class="prose">
+      <p>SOLID is a set of five answers to five specific kinds of pain: a class that keeps changing for unrelated reasons, a switch statement that keeps growing, a subclass that breaks its caller's assumptions, an interface that forces dishonest stub methods, and a high-level class welded to a low-level detail.</p>
+      <p>Use a principle when you can name the pain it removes on the code in front of you. Skip it when the only justification is a future you're guessing at. The five letters are a diagnosis, not a tax you owe on every file.</p>
+      <p>The runnable examples are in the repo if you want to see all five with real before-and-afters: <a href="https://github.com/krishanavatar/soild-principle" target="_blank" rel="noopener">github.com/krishanavatar/soild-principle</a>.</p>
+    </div>
+  </div>
+
+</div>
+
+<footer>
+  <span>krishanavatar.github.io · July 2026</span>
+  <div class="footer-refs">
+    <a href="/">&#8592; back to index</a>
+  </div>
+</footer>
+
+<script>
+  (function () {
+    var btn = document.getElementById('theme-toggle');
+    if (!btn) return;
+    btn.addEventListener('click', function () {
+      var cur = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+      var next = cur === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', next);
+      try { localStorage.setItem('theme', next); } catch (e) {}
+    });
+  })();
+</script>
+
+</body>
+</html>
