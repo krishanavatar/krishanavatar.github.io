@@ -1,0 +1,7 @@
+{
+  "title": "The Gap Between AI Benchmarks and Real-World Usefulness",
+  "summary": "Why MMLU scores and HumanEval pass rates tell you almost nothing about whether a model will work in your production system — and what to measure instead.",
+  "date": "2026-07-29",
+  "tag": "LLM Engineering",
+  "readingTime": "10 min"
+}
