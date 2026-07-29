@@ -1,0 +1,587 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>The Gap Between AI Benchmarks and Real-World Usefulness</title>
+  <meta name="description" content="Why MMLU scores and HumanEval pass rates tell you almost nothing about whether a model will work in your production system." />
+
+  <script>
+    (function () {
+      try {
+        var stored = localStorage.getItem('theme');
+        if (stored) { document.documentElement.setAttribute('data-theme', stored); return; }
+        if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+          document.documentElement.setAttribute('data-theme', 'dark');
+        }
+      } catch (_) {}
+    })();
+  </script>
+
+  <style>
+    /* ── Reset ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    img { max-width: 100%; display: block; }
+
+    /* ── Tokens — Light ── */
+    :root {
+      --bg:          #ffffff;
+      --surface:     #f7f7f5;
+      --border:      #e4e2dc;
+      --text:        #1a1917;
+      --text-muted:  #6b6860;
+      --accent:      #1d4ed8;
+      --accent-bg:   #eff6ff;
+      --accent-text: #1e3a8a;
+      --warn-bg:     #fffbeb;
+      --warn-border: #f59e0b;
+      --warn-text:   #92400e;
+      --code-bg:     #f3f4f6;
+      --code-text:   #111827;
+      --serif:       'Georgia', 'Times New Roman', serif;
+      --sans:        -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      --mono:        'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+      --max-w:       720px;
+      --reading-lh:  1.75;
+    }
+
+    /* ── Tokens — Dark ── */
+    [data-theme="dark"] {
+      --bg:          #0f0f0e;
+      --surface:     #1a1917;
+      --border:      #2d2b27;
+      --text:        #e8e6e1;
+      --text-muted:  #888580;
+      --accent:      #60a5fa;
+      --accent-bg:   #1e2a40;
+      --accent-text: #93c5fd;
+      --warn-bg:     #1f1a0e;
+      --warn-border: #b45309;
+      --warn-text:   #fcd34d;
+      --code-bg:     #1e1e1e;
+      --code-text:   #d4d4d4;
+    }
+
+    /* ── Base ── */
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 17px;
+      line-height: var(--reading-lh);
+      padding: 0 1.25rem;
+      transition: background 0.2s, color 0.2s;
+    }
+
+    .page-wrap {
+      max-width: var(--max-w);
+      margin: 0 auto;
+      padding: 3rem 0 5rem;
+    }
+
+    /* ── Theme Toggle ── */
+    .theme-toggle {
+      position: fixed;
+      top: 1.25rem;
+      right: 1.25rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      border-radius: 6px;
+      padding: 0.35rem 0.7rem;
+      font-size: 0.8rem;
+      font-family: var(--mono);
+      cursor: pointer;
+      z-index: 100;
+    }
+    .theme-toggle:hover { color: var(--text); }
+
+    /* ── Hero ── */
+    .eyebrow {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 1rem;
+    }
+
+    h1.post-title {
+      font-family: var(--serif);
+      font-size: clamp(1.8rem, 5vw, 2.6rem);
+      font-weight: 700;
+      line-height: 1.2;
+      color: var(--text);
+      margin-bottom: 1rem;
+    }
+
+    .deck {
+      font-size: 1.15rem;
+      color: var(--text-muted);
+      line-height: 1.6;
+      margin-bottom: 1.25rem;
+      max-width: 620px;
+    }
+
+    .meta {
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      border-top: 1px solid var(--border);
+      padding-top: 0.75rem;
+      margin-bottom: 2.5rem;
+    }
+
+    /* ── Thesis Banner ── */
+    .thesis-banner {
+      background: var(--accent-bg);
+      border-left: 3px solid var(--accent);
+      color: var(--accent-text);
+      padding: 1rem 1.25rem;
+      border-radius: 0 6px 6px 0;
+      font-size: 1rem;
+      font-style: italic;
+      margin-bottom: 2.5rem;
+      line-height: 1.6;
+    }
+
+    /* ── Section Labels ── */
+    .section-label {
+      font-family: var(--mono);
+      font-size: 0.68rem;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 0.4rem;
+      display: block;
+    }
+
+    h2.section-title {
+      font-family: var(--serif);
+      font-size: 1.45rem;
+      font-weight: 700;
+      color: var(--text);
+      line-height: 1.3;
+      margin-bottom: 1rem;
+    }
+
+    section.post-section {
+      margin-bottom: 2.75rem;
+    }
+
+    p {
+      margin-bottom: 1rem;
+      max-width: 680px;
+    }
+
+    /* ── Comparison Table ── */
+    .table-wrap {
+      overflow-x: auto;
+      margin: 1.5rem 0;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.9rem;
+    }
+
+    th {
+      background: var(--surface);
+      color: var(--text-muted);
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      text-align: left;
+      padding: 0.65rem 1rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    td {
+      padding: 0.65rem 1rem;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+      line-height: 1.5;
+    }
+
+    tr:last-child td { border-bottom: none; }
+    tr:nth-child(even) td { background: var(--surface); }
+
+    /* ── Plain-english Card ── */
+    .explainer-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.25rem 1.5rem;
+      margin: 1.5rem 0;
+    }
+
+    .explainer-card .card-label {
+      font-family: var(--mono);
+      font-size: 0.68rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 0.5rem;
+      display: block;
+    }
+
+    .explainer-card p { margin-bottom: 0; }
+
+    /* ── Callout / Warning ── */
+    .callout {
+      background: var(--warn-bg);
+      border-left: 3px solid var(--warn-border);
+      color: var(--warn-text);
+      padding: 0.9rem 1.25rem;
+      border-radius: 0 6px 6px 0;
+      font-size: 0.93rem;
+      margin: 1.5rem 0;
+      line-height: 1.6;
+    }
+
+    /* ── Code blocks ── */
+    pre {
+      background: var(--code-bg);
+      color: var(--code-text);
+      font-family: var(--mono);
+      font-size: 0.83rem;
+      line-height: 1.6;
+      padding: 1.1rem 1.25rem;
+      border-radius: 8px;
+      overflow-x: auto;
+      margin: 1.25rem 0;
+      border: 1px solid var(--border);
+    }
+
+    code {
+      font-family: var(--mono);
+      font-size: 0.85em;
+      background: var(--code-bg);
+      color: var(--code-text);
+      padding: 0.15em 0.4em;
+      border-radius: 4px;
+    }
+
+    pre code {
+      background: none;
+      padding: 0;
+      font-size: inherit;
+    }
+
+    /* ── Closer ── */
+    .closer {
+      border-top: 2px solid var(--border);
+      padding-top: 2rem;
+      margin-top: 3rem;
+    }
+
+    .closer h2 {
+      font-family: var(--serif);
+      font-size: 1.2rem;
+      font-weight: 700;
+      margin-bottom: 1rem;
+      color: var(--text);
+    }
+
+    .closer ol {
+      padding-left: 1.4rem;
+      color: var(--text);
+    }
+
+    .closer ol li {
+      margin-bottom: 0.6rem;
+      line-height: 1.65;
+    }
+
+    /* ── Footer ── */
+    footer {
+      border-top: 1px solid var(--border);
+      margin-top: 3rem;
+      padding-top: 1.25rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-family: var(--mono);
+      font-size: 0.73rem;
+      color: var(--text-muted);
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+
+    footer a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    footer a:hover { text-decoration: underline; }
+
+    /* ── Divider ── */
+    hr.section-divider {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 2.5rem 0;
+    }
+  </style>
+</head>
+<body>
+
+<button class="theme-toggle" onclick="
+  var next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  try { localStorage.setItem('theme', next); } catch(_) {}
+">toggle theme</button>
+
+<div class="page-wrap">
+
+  <!-- ── HERO ── -->
+  <div class="eyebrow">LLM Engineering</div>
+  <h1 class="post-title">The Gap Between AI Benchmarks and Real-World Usefulness</h1>
+  <p class="deck">Why MMLU scores and HumanEval pass rates tell you almost nothing about whether a model will work in your production system — and what to measure instead.</p>
+  <div class="meta">krishanavatar · July 2026 · 10 min read</div>
+
+  <!-- ── THESIS BANNER ── -->
+  <div class="thesis-banner">
+    A model that scores 90% on MMLU can still fail at extracting a date from a scanned invoice. Benchmarks measure what the research community agreed to measure, not what your users need.
+  </div>
+
+  <!-- ── SECTION 1 ── -->
+  <section class="post-section">
+    <span class="section-label">01 — Setup</span>
+    <h2 class="section-title">I Used to Trust the Leaderboards</h2>
+    <p>When I started building LLM-powered pipelines at Infrrd, my first instinct was to check the leaderboards. MMLU score, HumanEval pass@1, HellaSwag — I'd pick the model that sat highest and assume the work was mostly done. The model was smart. The rest was engineering.</p>
+    <p>That assumption collapsed quickly. Models that ranked near the top of every open benchmark would hallucinate field names on forms I knew they had seen during training. They'd extract numbers correctly 94% of the time in testing, then drop to 71% on a slightly different document layout in production. The benchmark number and the production number lived in completely separate realities.</p>
+    <p>I'm not saying benchmarks are useless. I'm saying they answer a narrow question, and most practitioners treat that answer as a proxy for a much broader one. That substitution is where things go wrong.</p>
+  </section>
+
+  <!-- ── SECTION 2 ── -->
+  <section class="post-section">
+    <span class="section-label">02 — What Benchmarks Actually Measure</span>
+    <h2 class="section-title">A Benchmark Is a Snapshot of One Committee's Priorities</h2>
+    <p>MMLU (Massive Multitask Language Understanding) covers 57 subjects from high school biology to professional law. It was designed to measure breadth of factual knowledge. HumanEval tests whether a model can write Python functions given a docstring. HellaSwag tests commonsense reasoning on sentence completion tasks.</p>
+    <p>These are legitimate things to measure. They were also designed by researchers optimizing for reproducibility, coverage, and clean evaluation — not for the messy, ambiguous, layout-sensitive documents that show up in a production document AI pipeline.</p>
+
+    <div class="explainer-card">
+      <span class="card-label">Plain English</span>
+      <p>A benchmark is a standardized test. Like the SAT, it tells you something real about the test-taker — but a perfect SAT score doesn't mean someone will excel at every job. The test measures what the test-writers decided to measure, not your specific requirements.</p>
+    </div>
+
+    <p>The gap opens because benchmark authors optimize for a property called <em>construct validity</em> — does the test measure the thing it claims to measure. What they can't optimize for is <em>ecological validity</em> — does performance on the test predict performance in the wild. That second property depends entirely on how similar your environment is to the test conditions.</p>
+  </section>
+
+  <!-- ── SECTION 3 ── -->
+  <section class="post-section">
+    <span class="section-label">03 — Distribution Shift</span>
+    <h2 class="section-title">Your Data Is Not the Benchmark's Data</h2>
+    <p>The core issue is distribution shift. Every benchmark has a data distribution — the kinds of inputs it uses, the format they come in, the vocabulary they use, the noise level they assume. Your production data has its own distribution. The further these are apart, the less the benchmark score predicts your outcome.</p>
+    <p>In document intelligence specifically, the shift is severe. Consider what a typical benchmark question looks like versus what my pipeline actually processes:</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Dimension</th>
+            <th>Benchmark input</th>
+            <th>Production input (document AI)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Format</td>
+            <td>Clean plain text, UTF-8</td>
+            <td>OCR output from scanned PDF, with artifacts</td>
+          </tr>
+          <tr>
+            <td>Layout</td>
+            <td>Linear paragraph structure</td>
+            <td>Tables, multi-column, headers, footers, stamps</td>
+          </tr>
+          <tr>
+            <td>Ambiguity</td>
+            <td>Unambiguous ground truth</td>
+            <td>Multiple valid interpretations of the same field</td>
+          </tr>
+          <tr>
+            <td>Noise</td>
+            <td>None to minimal</td>
+            <td>OCR errors, handwritten annotations, watermarks</td>
+          </tr>
+          <tr>
+            <td>Language</td>
+            <td>Standard written English</td>
+            <td>Legal boilerplate, industry jargon, mixed languages</td>
+          </tr>
+          <tr>
+            <td>Context length</td>
+            <td>Paragraph to page</td>
+            <td>3-200 pages, cross-page entity references</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>A model trained and benchmarked on clean text has no opportunity to demonstrate how it handles OCR artifacts — because no benchmark tests that. So the benchmark score says nothing about it.</p>
+  </section>
+
+  <!-- ── SECTION 4 ── -->
+  <section class="post-section">
+    <span class="section-label">04 — The MMLU Problem</span>
+    <h2 class="section-title">MMLU Tests Recall, Not Reasoning Under Uncertainty</h2>
+    <p>MMLU is a multiple-choice test. The model sees a question and four options, picks one. This format has a specific and narrow failure mode: a model that has memorized the right answers — or that recognizes answer patterns — can score well without understanding anything.</p>
+    <p>More importantly, multiple choice removes the hardest part of real-world reasoning. In production, there is no option B to fall back on. The model must produce an answer from open space, handle ambiguity, know when to express uncertainty, and — critically — know when to refuse or ask for clarification.</p>
+
+    <div class="callout">
+      <strong>Watch for this:</strong> Models that score high on MMLU but are trained with strong RLHF toward confident outputs will often produce plausible-sounding wrong answers rather than expressing uncertainty. That behavior destroys trust in a document extraction pipeline faster than almost anything else.
+    </div>
+
+    <p>I have seen a model correctly answer a benchmark question about contract clauses and then confidently extract the wrong clause from an actual contract because the clause appeared in a footnote rather than the body. The benchmark had no footnotes. The model had no strategy for them.</p>
+  </section>
+
+  <!-- ── SECTION 5 ── -->
+  <section class="post-section">
+    <span class="section-label">05 — The HumanEval Problem</span>
+    <h2 class="section-title">Passing a Coding Test Is Not the Same as Writing Production Code</h2>
+    <p>HumanEval asks a model to complete a Python function from a docstring. The solution is evaluated by running unit tests. This is a reasonable proxy for code generation skill — but a narrow one.</p>
+    <p>The functions in HumanEval are self-contained. They have no imports, no external state, no side effects, no database calls, no error handling requirements. They are algorithm puzzles. Real production code is almost none of those things.</p>
+
+    <pre><code># What HumanEval looks like
+def has_close_elements(numbers: List[float], threshold: float) -> bool:
+    """Check if any two elements in the list are closer than threshold."""
+    ...
+
+# What production code looks like
+def extract_invoice_total(
+    ocr_result: OcrPage,
+    schema: FieldSchema,
+    confidence_threshold: float = 0.85,
+) -> ExtractionResult:
+    # Handle None, handle layout variants, handle currency formats,
+    # log for observability, return structured result with confidence score
+    ...</code></pre>
+
+    <p>The gap is not just complexity. It's that HumanEval functions have a single right answer. Production functions have tradeoffs: correctness versus latency, completeness versus confidence, verbosity versus parseability. A model that aces HumanEval may still produce code that works but is impossible to maintain, or that assumes inputs are always clean.</p>
+  </section>
+
+  <!-- ── SECTION 6 ── -->
+  <section class="post-section">
+    <span class="section-label">06 — Benchmark Saturation</span>
+    <h2 class="section-title">When Every Model Scores 90%, the Score Stops Meaning Anything</h2>
+    <p>There's a structural problem that makes leaderboard comparisons increasingly meaningless: benchmark saturation. As frontier models push into the 85-90% range on benchmarks like MMLU, the variation between models collapses. The difference between the third-best and the eighth-best model on MMLU is often within statistical noise.</p>
+    <p>At saturation, a benchmark stops being a useful discriminator. You can't use it to make a deployment decision between two models that both score 89.4% with a margin of error of ±0.6%. But labs still publish these numbers, and practitioners still cite them, because there isn't a better widely-agreed-upon alternative.</p>
+    <p>The more honest labs have started publishing benchmarks on harder, less-saturated tasks — GPQA, MATH, ARC-Challenge. These are better at separating frontier models today. They will saturate too. This is an inherent feature of the benchmark paradigm, not a bug that will be fixed.</p>
+  </section>
+
+  <!-- ── SECTION 7 ── -->
+  <section class="post-section">
+    <span class="section-label">07 — What Actually Predicts Production Performance</span>
+    <h2 class="section-title">The Signal Is in Your Own Data</h2>
+    <p>After enough failed deployments based on leaderboard trust, I moved to a different approach. Before committing to a model, I run it against a curated slice of my actual production data. Not a lot — 200 to 500 examples is usually enough to surface the real failure modes. The investment is an afternoon of annotation. The return is avoiding a month of debugging after launch.</p>
+    <p>The things I actually measure before deploying a model in a document pipeline:</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>What I measure</th>
+            <th>Why it matters</th>
+            <th>What benchmark covers it</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Field extraction F1 on my document types</td>
+            <td>Direct proxy for task success</td>
+            <td>None</td>
+          </tr>
+          <tr>
+            <td>Hallucination rate on absent fields</td>
+            <td>Determines if I can trust negative results</td>
+            <td>None</td>
+          </tr>
+          <tr>
+            <td>Confidence calibration</td>
+            <td>Can I use the model's uncertainty signal</td>
+            <td>None</td>
+          </tr>
+          <tr>
+            <td>Latency at p95</td>
+            <td>SLA compliance</td>
+            <td>None</td>
+          </tr>
+          <tr>
+            <td>Regression on layout variants</td>
+            <td>Does accuracy hold across form versions</td>
+            <td>None</td>
+          </tr>
+          <tr>
+            <td>Token cost per document</td>
+            <td>Unit economics</td>
+            <td>None</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>The benchmark column is intentionally empty across the board. None of these production-critical properties are covered by any standard benchmark. They have to be measured from scratch, against your data, on your infrastructure.</p>
+  </section>
+
+  <!-- ── SECTION 8 ── -->
+  <section class="post-section">
+    <span class="section-label">08 — Building Your Own Eval</span>
+    <h2 class="section-title">A Minimal Eval Suite You Can Ship This Week</h2>
+    <p>You don't need a large ML team to run a meaningful domain eval. Here is the structure I use. It takes about a day to build the first time and roughly 30 minutes to run per model candidate:</p>
+
+    <pre><code># Minimal eval structure for document extraction
+eval/
+  data/
+    golden_set.jsonl        # 200-500 annotated examples
+    edge_cases.jsonl        # ~50 known-hard inputs
+  metrics/
+    extraction_f1.py        # field-level precision/recall
+    hallucination_rate.py   # false positive on absent fields
+    calibration.py          # confidence vs. actual accuracy
+  run_eval.py               # entry point, outputs eval_results.json
+  compare_models.py         # side-by-side table across candidates</code></pre>
+
+    <p>The golden set is the most important investment. Every time a model fails in production, add that example to the golden set. Over six months this becomes an extremely powerful regression guard that no public benchmark will give you.</p>
+
+    <div class="callout">
+      <strong>The annotation trap:</strong> Annotating 500 documents by hand sounds expensive. It is less expensive than discovering a 20-point accuracy regression after you have already deployed a new model to production and processed 10,000 real documents with it.
+    </div>
+
+    <p>Once your eval suite exists, model selection becomes a structured comparison rather than a gut call. You run every candidate against the same data and the same metrics. The leaderboard becomes a pre-filter — a way to narrow the field to three or four plausible candidates — not the decision itself.</p>
+  </section>
+
+  <!-- ── SECTION 9 ── -->
+  <section class="post-section">
+    <span class="section-label">09 — A Note on Context Length Claims</span>
+    <h2 class="section-title">128k Context Windows Do Not Mean 128k Reliable Retrieval</h2>
+    <p>One last benchmark-adjacent claim worth scrutinizing: context window size. Labs announce 128k, 200k, 1M token context windows as headline capabilities. These numbers are real in the sense that the model can accept that many tokens. They are misleading in the sense that attention quality degrades significantly over long contexts, and the degradation is not uniform.</p>
+    <p>In my experience with long-document extraction, models reliably attend to content in the first few thousand tokens and the last few thousand tokens. Content buried in the middle of a 50-page document is statistically much more likely to be missed or hallucinated around. This is well-documented in the "lost in the middle" literature, but it doesn't appear in any context-length benchmark because those benchmarks test whether the model can find a needle at all — not whether it reliably finds it under realistic production conditions.</p>
+    <p>If your use case depends on extracting information from anywhere in a long document, treat the context window claim as a ceiling, not a guarantee. Test explicitly with examples where the critical information appears at positions 25%, 50%, and 75% through the document.</p>
+  </section>
+
+  <hr class="section-divider" />
+
+  <!-- ── CLOSER ── -->
+  <div class="closer">
+    <h2>The Frame to Leave On</h2>
+    <ol>
+      <li>Benchmark scores tell you how a model performs on a specific test designed by researchers. They do not tell you how a model performs on your specific task, with your specific data, under your specific constraints. That gap is your responsibility to measure.</li>
+      <li>The only evaluation that matters is the one you run against a representative sample of your own production data. Build that golden set early, grow it from real failures, and use it as your primary model selection criterion.</li>
+      <li>Use leaderboards to narrow the candidate field, not to make the final call. A model that ranks third on MMLU but is ten points higher on your domain eval is the right model for your system.</li>
+    </ol>
+  </div>
+
+  <!-- ── FOOTER ── -->
+  <footer>
+    <span>krishanavatar.github.io · July 2026</span>
+    <a href="/">← back to index</a>
+  </footer>
+
+</div>
+</body>
+</html>
