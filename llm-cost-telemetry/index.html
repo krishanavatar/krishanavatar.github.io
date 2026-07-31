@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cost Telemetry First: Tracking Per-Model LLM Spend Before You Optimize It</title>
+<script>
+  (function () {
+    try {
+      var saved = localStorage.getItem('theme');
+      var theme = saved || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+      document.documentElement.setAttribute('data-theme', theme);
+    } catch (e) {}
+  })();
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;0,6..72,500;0,6..72,600;0,6..72,700;1,6..72,300;1,6..72,400&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:           #F5F1EB;
+    --bg-alt:       #EDEAE3;
+    --surface:      #FFFFFF;
+    --surface-tint: #FAF8F5;
+    --border:       #DDD9D0;
+    --border-light: #EAE7E0;
+    --text:         #1A1714;
+    --text-body:    #3D3A35;
+    --text-muted:   #6B6760;
+    --text-subtle:  #9B9892;
+    --accent:       #C85C2D;
+    --accent-light: #E8895D;
+    --accent-bg:    #FDF1EB;
+    --accent-border:#F0C4A8;
+    --green:        #2A7A4B;
+    --green-bg:     #EAF5EF;
+    --green-border: #A8D9BC;
+    --blue:         #2563A8;
+    --blue-bg:      #EAF1FA;
+    --blue-border:  #A8C5E8;
+    --red:          #B83535;
+    --red-bg:       #FAEBEB;
+    --red-border:   #E8AAAA;
+    --code-bg:      #1A1714;
+    --shadow:       rgba(200,92,45,0.08);
+    --serif:        'Newsreader', Georgia, serif;
+    --sans:         'Inter', system-ui, sans-serif;
+    --mono:         'JetBrains Mono', 'Courier New', monospace;
+    color-scheme: light;
+  }
+  [data-theme="dark"] {
+    --bg:           #14110D;
+    --bg-alt:       #1E1A14;
+    --surface:      #1A1611;
+    --surface-tint: #211C16;
+    --border:       #332C24;
+    --border-light: #2A241D;
+    --text:         #F2EEE7;
+    --text-body:    #D8D2C8;
+    --text-muted:   #A39C90;
+    --text-subtle:  #7A7468;
+    --accent:       #E8895D;
+    --accent-light: #F0A079;
+    --accent-bg:    #2C1E14;
+    --accent-border:#5A3826;
+    --green:        #5FD699;
+    --green-bg:     #14241B;
+    --green-border: #2E5640;
+    --blue:         #6FB0F0;
+    --blue-bg:      #142233;
+    --blue-border:  #2C4A6E;
+    --red:          #F08585;
+    --red-bg:       #2E1717;
+    --red-border:   #663434;
+    --code-bg:      #0E0B08;
+    --shadow:       rgba(0,0,0,0.45);
+    color-scheme: dark;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg);
+    color: var(--text-body);
+    font-family: var(--sans);
+    font-size: 17px;
+    line-height: 1.75;
+    font-weight: 400;
+  }
+  nav {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 0 48px;
+    height: 52px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .nav-brand { font-family: var(--sans); font-size: 13px; font-weight: 600; color: var(--text); letter-spacing: 0.01em; text-decoration: none; }
+  .nav-right { display: flex; align-items: center; gap: 20px; font-size: 13px; color: var(--text-muted); }
+  .nav-tag { background: var(--accent); color: #fff; font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 3px; letter-spacing: 0.04em; }
+  .theme-toggle { background: none; border: 1px solid var(--border); border-radius: 6px; width: 30px; height: 30px; flex-shrink: 0; cursor: pointer; color: var(--text-muted); font-size: 14px; line-height: 1; display: inline-flex; align-items: center; justify-content: center; transition: color 0.15s, border-color 0.15s; }
+  .theme-toggle:hover { color: var(--accent); border-color: var(--accent-border); }
+  .theme-icon-sun { display: none; }
+  [data-theme="dark"] .theme-icon-sun  { display: inline; }
+  [data-theme="dark"] .theme-icon-moon { display: none; }
+  .page-wrap { max-width: 760px; margin: 0 auto; padding: 0 24px 80px; }
+  .hero { padding: 64px 0 48px; border-bottom: 1px solid var(--border); margin-bottom: 48px; }
+  .hero-eyebrow { font-family: var(--sans); font-size: 12px; font-weight: 600; color: var(--accent); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 16px; }
+  .hero h1 { font-family: var(--serif); font-size: clamp(34px, 5vw, 52px); font-weight: 600; line-height: 1.1; letter-spacing: -0.02em; color: var(--text); margin-bottom: 20px; }
+  .hero-deck { font-size: 18px; line-height: 1.65; color: var(--text-muted); max-width: 640px; font-weight: 300; }
+  .hero-meta { margin-top: 24px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12px; color: var(--text-subtle); font-family: var(--mono); }
+  .hero-meta-sep { color: var(--border); }
+  .prose p { color: var(--text-body); margin-bottom: 20px; font-size: 17px; line-height: 1.78; }
+  .prose p:last-child { margin-bottom: 0; }
+  strong { color: var(--text); font-weight: 600; }
+  em { font-style: italic; color: var(--text-body); }
+  .section { margin-top: 56px; scroll-margin-top: 72px; }
+  .section-label { font-family: var(--sans); font-size: 11px; font-weight: 600; color: var(--accent); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 8px; }
+  .section h2 { font-family: var(--serif); font-size: 28px; font-weight: 600; line-height: 1.2; letter-spacing: -0.01em; color: var(--text); margin-bottom: 24px; }
+  .section h2 a.anchor { color: inherit; text-decoration: none; position: relative; }
+  .section h2 a.anchor:hover::before { content: '#'; position: absolute; left: -22px; color: var(--accent); font-weight: 400; }
+  h3 { font-family: var(--serif); font-size: 20px; font-weight: 600; color: var(--text); margin: 32px 0 14px; letter-spacing: -0.01em; }
+  .banner { background: var(--accent-bg); border: 1px solid var(--accent-border); border-left: 3px solid var(--accent); border-radius: 6px; padding: 16px 20px; margin-bottom: 40px; display: flex; gap: 12px; align-items: flex-start; }
+  .banner-badge { background: var(--accent); color: #fff; font-family: var(--mono); font-size: 10px; font-weight: 500; padding: 2px 8px; border-radius: 3px; white-space: nowrap; flex-shrink: 0; margin-top: 2px; }
+  .banner p { font-size: 14px; color: var(--text-muted); line-height: 1.6; margin: 0; }
+  .plain-english { background: var(--surface); border: 1px solid var(--border); border-top: 3px solid var(--accent); border-radius: 0 0 8px 8px; padding: 28px 32px; margin: 0 0 56px; }
+  .plain-english .pe-label { font-family: var(--sans); font-size: 11px; font-weight: 700; color: var(--accent); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 16px; }
+  .pe-list { list-style: none; padding: 0; }
+  .pe-list li { display: flex; gap: 14px; align-items: flex-start; padding: 14px 0; border-bottom: 1px solid var(--border-light); font-size: 16px; color: var(--text-body); line-height: 1.6; }
+  .pe-list li:last-child { border-bottom: none; }
+  .pe-num { width: 26px; height: 26px; background: var(--accent); color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0; margin-top: 1px; font-family: var(--mono); }
+  .cards-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin: 24px 0; }
+  .cards-grid:has(> .card:nth-child(2):last-child), .cards-grid:has(> .card:nth-child(4):last-child), .cards-grid.cols-2 { grid-template-columns: repeat(2, 1fr); }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 20px 22px; transition: border-color 0.2s, box-shadow 0.2s; }
+  .card:hover { border-color: var(--accent-border); box-shadow: 0 2px 8px var(--shadow); }
+  .card h4 { font-family: var(--sans); font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 7px; }
+  .card p { font-size: 13px; color: var(--text-muted); line-height: 1.6; margin: 0; }
+  .card.card-red { border-color: var(--red-border); }
+  .card.card-red .card-icon-badge { display: inline-block; background: var(--red-bg); color: var(--red); font-size: 10px; font-weight: 700; letter-spacing: 0.06em; padding: 2px 7px; border-radius: 3px; margin-bottom: 10px; text-transform: uppercase; }
+  .card.card-green { border-color: var(--green-border); }
+  .card.card-green .card-icon-badge { display: inline-block; background: var(--green-bg); color: var(--green); font-size: 10px; font-weight: 700; letter-spacing: 0.06em; padding: 2px 7px; border-radius: 3px; margin-bottom: 10px; text-transform: uppercase; }
+  .card.card-blue { border-color: var(--blue-border); }
+  .card.card-blue .card-icon-badge { display: inline-block; background: var(--blue-bg); color: var(--blue); font-size: 10px; font-weight: 700; letter-spacing: 0.06em; padding: 2px 7px; border-radius: 3px; margin-bottom: 10px; text-transform: uppercase; }
+  .code-block { background: var(--code-bg); border-radius: 7px; overflow: hidden; margin: 20px 0; }
+  .code-block .cb-label { padding: 9px 16px; background: rgba(255,255,255,0.06); border-bottom: 1px solid rgba(255,255,255,0.08); font-family: var(--mono); font-size: 11px; color: #888; letter-spacing: 0.06em; text-transform: uppercase; display: flex; align-items: center; justify-content: space-between; }
+  .code-block pre { padding: 20px; font-family: var(--mono); font-size: 13.5px; line-height: 1.7; color: #e8e8e8; overflow-x: auto; white-space: pre; }
+  .code-block .tok-key  { color: #fdba74; }
+  .code-block .tok-val  { color: #86efac; }
+  .code-block .tok-cmt  { color: #6b7280; font-style: italic; }
+  .code-block .tok-str  { color: #93c5fd; }
+  .code-block .tok-acc  { color: #fde047; }
+  .callout { background: var(--accent-bg); border: 1px solid var(--accent-border); border-left: 3px solid var(--accent); border-radius: 0 6px 6px 0; padding: 18px 22px; margin: 24px 0; }
+  .callout .callout-lbl { font-size: 11px; font-weight: 700; color: var(--accent); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 6px; }
+  .callout p { font-size: 15px; color: var(--text-muted); margin: 0; line-height: 1.7; }
+  ul.dl { list-style: none; padding: 0; margin: 0 0 24px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--surface); }
+  ul.dl li { position: relative; padding: 13px 18px 13px 34px; font-size: 15px; color: var(--text-body); border-bottom: 1px solid var(--border-light); line-height: 1.65; }
+  ul.dl li:last-child { border-bottom: none; }
+  ul.dl li::before { content: '→'; position: absolute; left: 14px; top: 13px; color: var(--accent); font-size: 14px; }
+  .data-table { overflow-x: auto; margin: 24px 0; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+  .data-table table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  .data-table table.fixed { table-layout: fixed; }
+  .data-table thead th { padding: 11px 16px; text-align: left; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; background: var(--bg-alt); border-bottom: 1px solid var(--border); color: var(--text-muted); white-space: nowrap; vertical-align: bottom; }
+  .data-table tbody td { padding: 11px 16px; border-bottom: 1px solid var(--border-light); color: var(--text-body); vertical-align: top; line-height: 1.55; overflow-wrap: anywhere; }
+  .data-table tbody tr:last-child td { border-bottom: none; }
+  .data-table tbody tr:hover td { background: var(--surface-tint); }
+  .data-table tbody td:first-child { font-weight: 600; color: var(--text); }
+  .data-table th.center, .data-table td.center { text-align: center; }
+  .data-table th.num, .data-table td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .td-yes { color: var(--green); font-weight: 600; }
+  .td-no  { color: var(--red);   font-weight: 600; }
+  .td-mono { font-family: var(--mono); font-size: 12px; color: var(--accent); }
+  footer { background: var(--surface); border-top: 1px solid var(--border); padding: 20px 48px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; font-size: 13px; color: var(--text-muted); }
+  footer a { color: var(--accent); text-decoration: none; }
+  footer a:hover { text-decoration: underline; }
+  .footer-refs { font-size: 12px; color: var(--text-subtle); }
+  @media (max-width: 600px) {
+    nav { padding: 0 20px; }
+    .hero { padding: 40px 0 36px; }
+    .page-wrap { padding: 0 16px 60px; }
+    footer { padding: 16px 20px; }
+    .plain-english { padding: 20px; }
+    .cards-grid, .cards-grid.cols-2, .cards-grid.cols-3 { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <a class="nav-brand" href="/">krishanavatar.github.io</a>
+  <div class="nav-right">
+    <span>AI / LLM Engineering</span>
+    <span class="nav-tag">JUL 2026</span>
+    <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle dark mode" title="Toggle dark mode">
+      <span class="theme-icon-moon" aria-hidden="true">&#9790;</span>
+      <span class="theme-icon-sun" aria-hidden="true">&#9728;</span>
+    </button>
+  </div>
+</nav>
+
+<div class="page-wrap">
+
+  <header class="hero">
+    <div class="hero-eyebrow">Production Engineering — LLM Observability</div>
+    <h1>Cost Telemetry First: Tracking Per-Model LLM Spend Before You Optimize It</h1>
+    <p class="hero-deck">Caching, routing, and prompt compression only work once you know which model, which document type, and which cache state is generating your bill. This is the tracking layer I built before touching any of those levers, and what it found before it found the fix.</p>
+    <div class="hero-meta">
+      <span>krishanavatar.github.io</span>
+      <span class="hero-meta-sep">/</span>
+      <span>July 2026</span>
+      <span class="hero-meta-sep">/</span>
+      <span>13 min read</span>
+    </div>
+  </header>
+
+  <div class="banner">
+    <span class="banner-badge">CONTEXT</span>
+    <p>This is drawn from building cost telemetry for a multi-provider document intelligence pipeline — the same platform I wrote about in <a href="/llm-cost-optimization-production/" style="color:inherit; text-decoration:underline;">LLM Cost Optimization in Production</a>. That post covered the three levers that cut spend by 64%. This one covers the instrumentation that made pulling any of those levers a decision instead of a guess.</p>
+  </div>
+
+  <div class="plain-english">
+    <div class="pe-label">What Cost Telemetry Has to Answer</div>
+    <ul class="pe-list">
+      <li>
+        <span class="pe-num">1</span>
+        <div><strong>Which model, exactly</strong> — not "OpenAI" or "the LLM," but the specific model ID that served the request, since a mini and a frontier model on the same provider can differ in price by 15x.</div>
+      </li>
+      <li>
+        <span class="pe-num">2</span>
+        <div><strong>Which document type and pipeline stage</strong> — extraction, classification, and validation calls have different cost profiles, and a blended number hides which one is actually expensive.</div>
+      </li>
+      <li>
+        <span class="pe-num">3</span>
+        <div><strong>Cache hit or miss</strong> — the same token count is a different dollar amount depending on whether it landed in cache, and a system that can't distinguish the two is measuring the wrong thing.</div>
+      </li>
+    </ul>
+  </div>
+
+  <div class="section" id="the-bill">
+    <div class="section-label">01 — The Problem</div>
+    <h2><a class="anchor" href="#the-bill">The Bill Doesn't Tell You Where the Money Went</a></h2>
+    <div class="prose">
+      <p>The first version of cost visibility on our document pipeline was a single number: total LLM spend for the month, pulled from the provider billing dashboards and added together across three vendors. It told us the number was too high. It told us nothing about why.</p>
+      <p>That's the trap with aggregate billing. A provider invoice bills by API key or by project, not by document type, not by pipeline stage, not by which of your six configured models actually served each request. When finance asks why the number went up 20% month over month, "the LLM calls got more expensive" is not an answer anyone can act on. Somebody has to go find the actual cause, and without instrumentation, that search is manual: pull sample logs, guess at patterns, re-run a few requests by hand and hope the sample generalizes.</p>
+      <p>We did that manual search twice before deciding it wasn't sustainable. The second time, a spend spike traced back to a single document type that had quietly started routing to a frontier model after a schema change, and it took four days to find. That's the point at which telemetry stopped being a nice-to-have and became a prerequisite for touching the cost problem at all.</p>
+    </div>
+  </div>
+
+  <div class="section" id="why-averages-lie">
+    <div class="section-label">02 — Diagnosis</div>
+    <h2><a class="anchor" href="#why-averages-lie">Why the Blended Average Lies</a></h2>
+    <div class="prose">
+      <p>Our blended cost was roughly $0.018 per document before any optimization work started. That number is useless on its own, because it assumes every document costs about the same to process, and they don't. A clean, single-page form and a ten-page multi-column statement do not touch the same number of tokens, the same model tier, or the same retry rate.</p>
+      <p>Once we broke the blended figure down by document type and model, the picture looked nothing like the average suggested. A minority of document types were responsible for a majority of spend, and the reason wasn't document complexity, it was routing: certain types were pinned to a frontier model for historical reasons nobody had revisited.</p>
+    </div>
+
+    <div class="data-table">
+      <table class="fixed">
+        <colgroup>
+          <col style="width:30%">
+          <col style="width:18%">
+          <col style="width:18%">
+          <col style="width:17%">
+          <col style="width:17%">
+        </colgroup>
+        <thead>
+          <tr>
+            <th>Document type</th>
+            <th class="num">% of volume</th>
+            <th class="num">% of spend</th>
+            <th>Model tier used</th>
+            <th class="num">Cost / doc</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Standard single-page form</td>
+            <td class="num">54%</td>
+            <td class="num">21%</td>
+            <td>Cheap tier</td>
+            <td class="num">$0.007</td>
+          </tr>
+          <tr>
+            <td>Multi-page statement</td>
+            <td class="num">28%</td>
+            <td class="num">33%</td>
+            <td>Mixed</td>
+            <td class="num">$0.021</td>
+          </tr>
+          <tr>
+            <td>Legacy claim format</td>
+            <td class="num">11%</td>
+            <td class="num">37%</td>
+            <td class="td-no">Frontier (pinned)</td>
+            <td class="num">$0.063</td>
+          </tr>
+          <tr>
+            <td>Everything else</td>
+            <td class="num">7%</td>
+            <td class="num">9%</td>
+            <td>Mixed</td>
+            <td class="num">$0.024</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="prose">
+      <p>The legacy claim format was 11% of volume and 37% of spend, pinned to a frontier model since a reliability incident more than a year earlier that nobody had re-tested since. Nothing about this was visible in the blended average. It only showed up once cost was attributed per document type and per model, which meant the attribution layer had to exist before the optimization work could be scoped, let alone prioritized.</p>
+    </div>
+  </div>
+
+  <div class="section" id="instrumenting">
+    <div class="section-label">03 — Instrumentation</div>
+    <h2><a class="anchor" href="#instrumenting">Instrumenting the Call, Not the Invoice</a></h2>
+    <div class="prose">
+      <p>The fix starts at the point where the request actually happens, not at the point where the bill arrives. Every call into a provider SDK already returns a usage object: input tokens, output tokens, and for providers that support it, cache read and cache write tokens. That object is thrown away by default the moment the response is parsed for its content. The instrumentation is simply refusing to throw it away.</p>
+      <p>I wrapped every provider call in a single decorator that captures the usage object alongside the context that the usage object itself doesn't know: which document type triggered the call, which pipeline stage it came from, and which tenant it belongs to. None of that context lives on the response. It has to be attached at the call site.</p>
+    </div>
+
+    <div class="code-block">
+      <div class="cb-label">Python — usage capture decorator</div>
+      <pre><span class="tok-key">import</span> functools
+<span class="tok-key">import</span> time
+<span class="tok-key">from</span> dataclasses <span class="tok-key">import</span> dataclass, asdict
+
+<span class="tok-key">@dataclass</span>
+<span class="tok-key">class</span> UsageEvent:
+    model:              str
+    provider:           str
+    doc_type:           str
+    pipeline_stage:     str
+    tenant_id:          str
+    input_tokens:       int
+    output_tokens:      int
+    cache_read_tokens:  int
+    cache_write_tokens: int
+    latency_ms:         float
+    estimated_cost:     float
+
+<span class="tok-key">def</span> track_usage(doc_type: str, pipeline_stage: str, tenant_id: str):
+    <span class="tok-key">def</span> decorator(call_fn):
+        <span class="tok-key">@functools.wraps</span>(call_fn)
+        <span class="tok-key">def</span> wrapper(model: str, provider: str, *args, **kwargs):
+            t0 = time.time()
+            response = call_fn(model, provider, *args, **kwargs)
+            latency = (time.time() - t0) * <span class="tok-val">1000</span>
+
+            usage = response.usage
+            event = UsageEvent(
+                model=model,
+                provider=provider,
+                doc_type=doc_type,
+                pipeline_stage=pipeline_stage,
+                tenant_id=tenant_id,
+                input_tokens=usage.input_tokens,
+                output_tokens=usage.output_tokens,
+                cache_read_tokens=getattr(usage, <span class="tok-str">"cache_read_input_tokens"</span>, <span class="tok-val">0</span>),
+                cache_write_tokens=getattr(usage, <span class="tok-str">"cache_creation_input_tokens"</span>, <span class="tok-val">0</span>),
+                latency_ms=latency,
+                estimated_cost=estimate_cost(model, usage),
+            )
+            emit(event)  <span class="tok-cmt"># → metrics pipeline, see below</span>
+            <span class="tok-key">return</span> response
+        <span class="tok-key">return</span> wrapper
+    <span class="tok-key">return</span> decorator</pre>
+    </div>
+
+    <div class="prose">
+      <p>The important design choice is that <code>doc_type</code>, <code>pipeline_stage</code>, and <code>tenant_id</code> are passed in at the decoration point, where the calling code already knows them, rather than inferred later from logs. Inference after the fact is where attribution efforts usually stall, because reconstructing context from a raw request log is unreliable and slow. Capture it while it's still in scope.</p>
+    </div>
+  </div>
+
+  <div class="section" id="attribution">
+    <div class="section-label">04 — Attribution Model</div>
+    <h2><a class="anchor" href="#attribution">Choosing the Attribution Dimensions</a></h2>
+    <div class="prose">
+      <p>Every usage event carries six dimensions: model, document type, pipeline stage, tenant, prompt template version, and cache state. That's a deliberate, small set. It's tempting to tag events with everything available — request ID, user ID, feature flag state, arbitrary deployment metadata — but every additional dimension multiplies the number of distinct time series a metrics backend has to store, and most of that cardinality never gets queried.</p>
+      <p>The six we kept map directly to decisions someone would actually make: model tells you what to route, document type tells you what to route it based on, pipeline stage tells you where in the flow the cost concentrates, tenant tells you who to bill or throttle, prompt template version tells you whether a cost step-change traces back to a specific prompt edit rather than a shift in traffic mix, and cache state tells you whether caching is behaving as designed. Anything that doesn't map to a decision is a dimension not worth the cardinality cost.</p>
+      <p>Cache state deserves its own callout because it's the dimension most likely to be modeled wrong. A request isn't simply "cached" or "not cached" — it can have a mix of cache-read tokens and normal-priced tokens in the same call, and the cache write itself carries a cost premium on some providers. Treating cache state as a spectrum rather than a boolean is what let us later notice that one model's effective cache hit rate was far below the other two, well before that gap showed up as a cost anomaly.</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-lbl">On tenant-level attribution</div>
+      <p>If your platform is multi-tenant, tag by tenant from day one even if nobody's asking for per-tenant billing yet. Retrofitting tenant attribution onto historical usage data is close to impossible, because the context that would let you reconstruct it is usually gone by the time someone asks for it.</p>
+    </div>
+  </div>
+
+  <div class="section" id="pipeline">
+    <div class="section-label">05 — The Telemetry Pipeline</div>
+    <h2><a class="anchor" href="#pipeline">Building the Telemetry Pipeline</a></h2>
+    <div class="prose">
+      <p>Capturing the usage event is half the problem. The other half is getting it into something queryable without adding latency to the request path the event came from. We emit each event asynchronously to a Prometheus pushgateway, tagged by the low-cardinality subset of those dimensions — model, provider, document type, pipeline stage, and cache state — and let Grafana do the aggregation.</p>
+    </div>
+
+    <div class="code-block">
+      <div class="cb-label">Python — async metric emission</div>
+      <pre><span class="tok-key">from</span> prometheus_client <span class="tok-key">import</span> Counter, Histogram
+<span class="tok-key">import</span> asyncio
+
+LLM_COST_TOTAL = Counter(
+    <span class="tok-str">"llm_cost_usd_total"</span>,
+    <span class="tok-str">"Estimated LLM spend in USD"</span>,
+    [<span class="tok-str">"model"</span>, <span class="tok-str">"provider"</span>, <span class="tok-str">"doc_type"</span>, <span class="tok-str">"pipeline_stage"</span>, <span class="tok-str">"cache_state"</span>]
+)
+LLM_TOKENS_TOTAL = Counter(
+    <span class="tok-str">"llm_tokens_total"</span>,
+    <span class="tok-str">"Tokens processed"</span>,
+    [<span class="tok-str">"model"</span>, <span class="tok-str">"direction"</span>, <span class="tok-str">"cache_state"</span>]
+)
+LLM_LATENCY = Histogram(
+    <span class="tok-str">"llm_call_latency_ms"</span>,
+    <span class="tok-str">"Per-call latency"</span>,
+    [<span class="tok-str">"model"</span>, <span class="tok-str">"pipeline_stage"</span>]
+)
+
+<span class="tok-key">async def</span> emit(event: UsageEvent):
+    cache_state = <span class="tok-str">"hit"</span> <span class="tok-key">if</span> event.cache_read_tokens > <span class="tok-val">0</span> <span class="tok-key">else</span> <span class="tok-str">"miss"</span>
+
+    LLM_COST_TOTAL.labels(
+        model=event.model, provider=event.provider,
+        doc_type=event.doc_type, pipeline_stage=event.pipeline_stage,
+        cache_state=cache_state,
+    ).inc(event.estimated_cost)
+
+    LLM_TOKENS_TOTAL.labels(model=event.model, direction=<span class="tok-str">"input"</span>, cache_state=cache_state).inc(event.input_tokens)
+    LLM_TOKENS_TOTAL.labels(model=event.model, direction=<span class="tok-str">"output"</span>, cache_state=<span class="tok-str">"n/a"</span>).inc(event.output_tokens)
+    LLM_LATENCY.labels(model=event.model, pipeline_stage=event.pipeline_stage).observe(event.latency_ms)</pre>
+    </div>
+
+    <div class="prose">
+      <p>Notice that tenant ID and prompt template version aren't Prometheus labels. They're high-cardinality relative to model and document type, and pushing them into the same time series would blow up storage on the metrics backend. Instead, every usage event is also published as a JSON message to a Kafka topic, consumed by a small worker that writes it as a row into ClickHouse. ClickHouse is built for exactly the cardinality Prometheus isn't: one row per LLM call, tenant and prompt version included, queried with plain SQL for anything ad hoc rather than pre-aggregated into a fixed set of dashboard panels.</p>
+    </div>
+
+    <div class="code-block">
+      <div class="cb-label">SQL — ClickHouse event table</div>
+      <pre><span class="tok-key">CREATE TABLE</span> llm_usage_events (
+    ts                  DateTime,
+    model               LowCardinality(String),
+    provider            LowCardinality(String),
+    doc_type            LowCardinality(String),
+    pipeline_stage      LowCardinality(String),
+    tenant_id           String,
+    prompt_version      String,
+    cache_state         LowCardinality(String),
+    input_tokens        UInt32,
+    output_tokens       UInt32,
+    cache_read_tokens   UInt32,
+    cache_write_tokens  UInt32,
+    latency_ms          Float32,
+    estimated_cost      Float64
+)
+<span class="tok-key">ENGINE</span> = MergeTree()
+<span class="tok-key">PARTITION BY</span> toYYYYMM(ts)
+<span class="tok-key">ORDER BY</span> (tenant_id, model, ts);
+
+<span class="tok-cmt">-- cost per tenant per day, last 30 days -- the chargeback query</span>
+<span class="tok-key">SELECT</span>
+    toDate(ts)              <span class="tok-key">AS</span> day,
+    tenant_id,
+    round(sum(estimated_cost), <span class="tok-val">2</span>) <span class="tok-key">AS</span> cost_usd
+<span class="tok-key">FROM</span> llm_usage_events
+<span class="tok-key">WHERE</span> ts >= now() - <span class="tok-key">INTERVAL</span> <span class="tok-val">30</span> <span class="tok-key">DAY</span>
+<span class="tok-key">GROUP BY</span> day, tenant_id
+<span class="tok-key">ORDER BY</span> day <span class="tok-key">DESC</span>, cost_usd <span class="tok-key">DESC</span>;</pre>
+    </div>
+
+    <div class="prose">
+      <p>The rule of thumb: dimensions you want a real-time alert on go in the metrics labels; dimensions you want for ad hoc billing, chargeback, or audit queries go in ClickHouse, where cardinality is cheap and SQL replaces a fixed panel set.</p>
+    </div>
+
+    <h3>Or Don't Build the Pipeline Yourself</h3>
+    <div class="prose">
+      <p>Everything above is a from-scratch build, and from-scratch is the right call when your attribution dimensions are specific to your own pipeline — document type and pipeline stage aren't concepts any off-the-shelf tool knows about. It is not the only option, and it's worth knowing what the alternatives actually give you before deciding to write a decorator and stand up a Kafka topic.</p>
+    </div>
+
+    <div class="data-table">
+      <table class="fixed">
+        <colgroup>
+          <col style="width:20%">
+          <col style="width:32%">
+          <col style="width:28%">
+          <col style="width:20%">
+        </colgroup>
+        <thead>
+          <tr>
+            <th>Approach</th>
+            <th>Gives you out of the box</th>
+            <th>You still build</th>
+            <th>Best fit</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Custom (this post)</td>
+            <td>Full control over attribution dimensions; no new dependency in the request path</td>
+            <td>Capture, transport, storage, dashboards — all of it</td>
+            <td>Pipeline-specific dimensions like document type or tenant</td>
+          </tr>
+          <tr>
+            <td>LiteLLM</td>
+            <td>One SDK across 100+ providers, per-call cost calculated for you, proxy mode with per-key budgets and rate limits</td>
+            <td>Long-term storage and dashboards beyond its built-in views; custom business dimensions</td>
+            <td>Multi-provider routing where per-model cost math is the main pain point</td>
+          </tr>
+          <tr>
+            <td>Langfuse</td>
+            <td>Hosted traces, cost, prompt versioning, and eval scores in one dashboard</td>
+            <td>Deep pipeline-specific dimensions unless modeled as trace metadata</td>
+            <td>Teams that want tracing, cost, and prompt eval without assembling three tools</td>
+          </tr>
+          <tr>
+            <td>OpenTelemetry (GenAI conventions)</td>
+            <td>Vendor-neutral span attributes (<code>gen_ai.usage.input_tokens</code>, etc.) that plug into an existing OTel backend</td>
+            <td>The GenAI semantic conventions are still stabilizing; per-provider instrumentation coverage varies</td>
+            <td>Orgs already standardized on OTel who want LLM calls in the same backend as every other service</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="prose">
+      <p>We built custom because the dimensions that mattered most — document type, pipeline stage, tenant — aren't things a general-purpose LLM observability tool models natively, and Prometheus and ClickHouse were already load-bearing pieces of our stack. If I were starting today with a simpler pipeline and no existing metrics infrastructure, I'd reach for LiteLLM's proxy plus Langfuse before writing a single decorator. The build-versus-buy line isn't about maturity, it's about how much of your cost structure is generic provider math versus specific to your own pipeline.</p>
+    </div>
+  </div>
+
+  <div class="section" id="findings">
+    <div class="section-label">06 — What It Found</div>
+    <h2><a class="anchor" href="#findings">What the Dashboards Surfaced</a></h2>
+    <div class="prose">
+      <p>Within the first two weeks of live telemetry, three things showed up that four days of manual log-digging had missed entirely.</p>
+    </div>
+
+    <div class="cards-grid">
+      <div class="card card-red">
+        <div class="card-icon-badge">Finding 1</div>
+        <h4>A pinned frontier route nobody revisited</h4>
+        <p>The legacy claim format from the earlier table, still routed to a frontier model over a year after the reliability issue that justified it had been fixed elsewhere in the pipeline.</p>
+      </div>
+      <div class="card card-red">
+        <div class="card-icon-badge">Finding 2</div>
+        <h4>A cache hit rate 40 points below its peers</h4>
+        <p>One provider's cache hit rate sat at 52% against 90%+ for the others, traced to a system prompt that included a per-request timestamp in the cacheable prefix.</p>
+      </div>
+      <div class="card card-red">
+        <div class="card-icon-badge">Finding 3</div>
+        <h4>One tenant driving disproportionate spend</h4>
+        <p>A single tenant generating 6% of document volume but 19% of spend, because their document mix skewed heavily toward the expensive multi-page statement type.</p>
+      </div>
+    </div>
+
+    <div class="prose">
+      <p>None of these three are exotic bugs. They're the ordinary way cost drifts in a system nobody is watching closely: a decision made under one set of conditions outlives the conditions that justified it. What telemetry changes isn't the existence of that drift, it's the time between the drift happening and someone noticing. Four days of manual digging became something visible on a dashboard in the first sprint after the metrics went live.</p>
+    </div>
+  </div>
+
+  <div class="section" id="guardrails">
+    <div class="section-label">07 — Guardrails</div>
+    <h2><a class="anchor" href="#guardrails">Turning Dashboards Into Alerts</a></h2>
+    <div class="prose">
+      <p>A dashboard someone has to remember to check is a dashboard that gets checked at month-end, which is exactly the cadence we were trying to escape. The metrics only became useful operationally once we set alerting thresholds on top of them: per-model daily spend, per-tenant spend velocity, and cache hit rate floor per model.</p>
+    </div>
+
+    <div class="code-block">
+      <div class="cb-label">PromQL — alert rules</div>
+      <pre><span class="tok-cmt"># Per-model daily spend exceeds 150% of its 7-day rolling average</span>
+- alert: LLMModelCostSpike
+  expr: |
+    increase(llm_cost_usd_total[1d])
+      > 1.5 * avg_over_time(increase(llm_cost_usd_total[1d])[7d:1d])
+  labels:
+    severity: warning
+
+<span class="tok-cmt"># Cache hit rate for a model drops below 70%</span>
+- alert: LLMCacheHitRateLow
+  expr: |
+    sum(rate(llm_tokens_total{cache_state="hit"}[1h])) by (model)
+      / sum(rate(llm_tokens_total{direction="input"}[1h])) by (model)
+      < 0.70
+  labels:
+    severity: warning</pre>
+    </div>
+
+    <div class="callout">
+      <div class="callout-lbl">What this caught in practice</div>
+      <p>A retry loop on a malformed document was silently re-sending the same request to a frontier model six times before failing validation and giving up. The daily cost-spike alert fired within an hour of that document type entering the queue; without it, the same failure mode would have shown up as an unexplained bump on the following month's invoice.</p>
+    </div>
+  </div>
+
+  <div class="section" id="beyond">
+    <div class="section-label">08 — Beyond the Invoice</div>
+    <h2><a class="anchor" href="#beyond">What This Unlocks Beyond the Line Item</a></h2>
+    <div class="prose">
+      <p>Cost was the reason this got built. It wasn't the only thing it turned out to answer. Once the same event stream exists, four questions that had nothing to do with the original mandate get answered for free.</p>
+    </div>
+
+    <ul class="dl">
+      <li><strong>Quota and rate-limit avoidance.</strong> Per-model, per-provider call volume in real time means you can see a provider approaching its rate limit before requests start failing, and shift new traffic to a provider with headroom. Without it, you find out about the limit from a wave of 429s in production, which is the worst possible time to learn it.</li>
+      <li><strong>Regression detection.</strong> A prompt template edit that silently doubles output tokens, or a schema change that pushes more documents onto a frontier-tier model, shows up as a step change on a per-model panel within the hour it ships. Tagging events with prompt template version means the step change points at the deploy that caused it instead of triggering a vague investigation days later.</li>
+      <li><strong>Chargeback and showback.</strong> With tenant-level cost already captured, "we spent $40k on LLM calls this month" becomes "team X's feature spent $6k of it" — a rollup query against the ClickHouse table, not a project. Whether that number goes into an internal chargeback or a lighter-weight showback report, the attribution work is already done before anyone asks for it.</li>
+      <li><strong>Model routing with a number behind it.</strong> Telemetry pairs cost against accuracy or error rate captured from the same events, so "route this document type to a cheaper model" stops being a hunch and becomes "the cost delta is 8x and the accuracy delta on our benchmark is within noise." That's the reasoning that justified the routing decisions in the companion post — it existed because the attribution layer existed first.</li>
+    </ul>
+  </div>
+
+  <div class="section" id="breaks">
+    <div class="section-label">09 — Failure Modes</div>
+    <h2><a class="anchor" href="#breaks">Where This Breaks</a></h2>
+    <div class="prose">
+      <p>Cost telemetry is not free to run, and it has its own ways of going wrong.</p>
+    </div>
+
+    <ul class="dl">
+      <li><strong>Cardinality explosion.</strong> Every attribution dimension you add multiplies the number of time series the metrics backend has to store and query. Model × document type × pipeline stage × cache state is already a meaningful number of series; adding request-level or user-level tags to the same metrics store, rather than to a separate log, is the most common way teams make their observability stack more expensive than the thing it's observing.</li>
+      <li><strong>Retry and fallback double-counting.</strong> A request that fails on one model and retries on another produces two usage events for what the business considers a single logical operation. If your cost dashboard isn't explicit about this, "cost per document" quietly becomes "cost per attempt," and the two diverge exactly when retries spike, which is precisely when you need the number to be trustworthy.</li>
+      <li><strong>Emission overhead on the request path.</strong> Synchronous metric emission adds latency to every call, however small. Fire the emission asynchronously, and make sure a metrics-pipeline outage degrades to "we lose some visibility" rather than "we lose some requests."</li>
+    </ul>
+  </div>
+
+  <div class="section" id="frame">
+    <div class="section-label">10 — Takeaway</div>
+    <h2><a class="anchor" href="#frame">The Frame to Leave On</a></h2>
+    <div class="prose">
+      <p>Cost optimization is a decision problem, and decisions need attribution before they need levers. A blended average per document tells you the size of the problem without telling you its shape, and every optimization built on top of a shapeless problem is a guess dressed up as a plan.</p>
+      <p>The instrumentation itself is not complicated: capture the usage object the provider already gives you, attach the context that only the call site knows, and keep the attribution dimensions to the ones that map to an actual decision. The discipline is in doing it before the optimization work starts, not after someone asks why the bill went up.</p>
+      <p>Everything downstream — caching, routing, compression — is easier to justify and easier to calibrate once the telemetry exists. Build the meter before you build the fix.</p>
+    </div>
+  </div>
+
+</div>
+
+<footer>
+  <span>krishanavatar.github.io · July 2026</span>
+  <div class="footer-refs">
+    <a href="/">← back to index</a>
+  </div>
+</footer>
+
+<script>
+  (function () {
+    var btn = document.getElementById('theme-toggle');
+    if (!btn) return;
+    btn.addEventListener('click', function () {
+      var cur = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+      var next = cur === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', next);
+      try { localStorage.setItem('theme', next); } catch (e) {}
+    });
+  })();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,7 @@
+{
+  "title": "Cost Telemetry First: Tracking Per-Model LLM Spend Before You Optimize It",
+  "summary": "Caching, routing, and prompt compression only work once you know which model, document type, and cache state is generating your bill. The instrumentation and attribution layer that had to exist before any of those levers made sense.",
+  "date": "2026-07-31",
+  "tag": "LLM Engineering",
+  "readingTime": "13 min"
+}
